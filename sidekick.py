@@ -1,34 +1,17 @@
-from typing import Annotated
-from typing_extensions import TypedDict
+from schema import State, EvaluatorOutput
 from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from typing import List, Any, Optional, Dict
-from pydantic import BaseModel, Field
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
+from typing import Any
 from tools.file_code import file_code_tools
 from tools.navigation import playwright_tools
 from tools.search import search_tools
 from tools.notifications import whatsapp_tool
+from agents.worker import worker_agent
 import uuid
 import asyncio
-from datetime import datetime
-
-
-class State(TypedDict):
-    messages: Annotated[List[Any], add_messages]
-    success_criteria: str
-    feedback_on_work: Optional[str]
-    success_criteria_met: bool
-    user_input_needed: bool
-
-
-class EvaluatorOutput(BaseModel):
-    feedback: str = Field(description="Feedback on the assistant's response")
-    success_criteria_met: bool = Field(description="Whether the success criteria have been met")
-    user_input_needed: bool = Field(description="True if more input is needed from the user, or clarifications, or the assistant is stuck")
 
 
 class Sidekick:
@@ -54,50 +37,8 @@ class Sidekick:
         self.evaluator_llm_with_output = evaluator_llm.with_structured_output(EvaluatorOutput)
         await self.build_graph()
 
-    def worker(self, state: State) -> Dict[str, Any]:
-        system_message = f"""You are a helpful assistant that can use tools to complete tasks.
-    You keep working on a task until either you have a question or clarification for the user, or the success criteria is met.
-    You have many tools to help you, including tools to browse the internet, navigating and retrieving web pages.
-    You have a tool to run python code, but note that you would need to include a print() statement if you wanted to receive output.
-    The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-    This is the success criteria:
-    {state['success_criteria']}
-    You should reply either with a question for the user about this assignment, or with your final response.
-    If you have a question for the user, you need to reply by clearly stating your question. An example might be:
-
-    Question: please clarify whether you want a summary or a detailed answer
-
-    If you've finished, reply with the final answer, and don't ask a question; simply reply with the answer.
-    """
-
-        if state.get("feedback_on_work"):
-            system_message += f"""
-    Previously you thought you completed the assignment, but your reply was rejected because the success criteria was not met.
-    Here is the feedback on why this was rejected:
-    {state['feedback_on_work']}
-    With this feedback, please continue the assignment, ensuring that you meet the success criteria or have a question for the user."""
-
-        # Add in the system message
-
-        found_system_message = False
-        messages = state["messages"]
-        for message in messages:
-            if isinstance(message, SystemMessage):
-                message.content = system_message
-                found_system_message = True
-
-        if not found_system_message:
-            messages = [SystemMessage(content=system_message)] + messages
-
-        # Invoke the LLM with tools
-        response = self.worker_llm_with_tools.invoke(messages)
-
-        # Return updated state
-        return {
-            "messages": [response],
-        }
-
+    def worker(self, state: State) -> dict[str, list[BaseMessage]]:
+        return worker_agent(self.worker_llm_with_tools, state)
 
     def worker_router(self, state: State) -> str:
         last_message = state["messages"][-1]
@@ -107,7 +48,7 @@ class Sidekick:
         else:
             return "evaluator"
 
-    def format_conversation(self, messages: List[Any]) -> str:
+    def format_conversation(self, messages: list[Any]) -> str:
         conversation = "Conversation history:\n\n"
         for message in messages:
             if isinstance(message, HumanMessage):

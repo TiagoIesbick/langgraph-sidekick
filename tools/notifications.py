@@ -8,9 +8,6 @@ TWILIO_AUTH_TOKEN = getenv("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_FROM = getenv("TWILIO_WHATSAPP_FROM")
 TWILIO_WHATSAPP_TO = getenv("TWILIO_WHATSAPP_TO")
 
-print('twilio', TWILIO_ACCOUNT_SID)
-
-
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 def send_whatsapp(text: str) -> str:
