@@ -3,7 +3,6 @@ from schema import State, EvaluatorOutput
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
 from typing import Any
 from tools.file_code import file_code_tools
@@ -11,6 +10,7 @@ from tools.navigation import playwright_tools
 from tools.search import search_tools
 from tools.notifications import whatsapp_tool
 from agents.worker import worker_agent
+from db.sql_memory import setup_memory
 import uuid
 import asyncio
 
@@ -23,11 +23,12 @@ class Sidekick:
         self.llm_with_tools = None
         self.graph = None
         self.sidekick_id = str(uuid.uuid4())
-        self.memory = MemorySaver()
+        self.memory = None
         self.browser = None
         self.playwright = None
 
     async def setup(self):
+        self.memory = await setup_memory()
         self.tools, self.browser, self.playwright = await playwright_tools()
         self.tools += await file_code_tools()
         self.tools += await search_tools()
@@ -103,7 +104,7 @@ class Sidekick:
         feedback = {"role": "assistant", "content": result["messages"][-1].content}
         return history + [user, reply, feedback]
 
-    def cleanup(self):
+    async def cleanup(self):
         if self.browser:
             try:
                 loop = asyncio.get_running_loop()
@@ -115,3 +116,5 @@ class Sidekick:
                 asyncio.run(self.browser.close())
                 if self.playwright:
                     asyncio.run(self.playwright.stop())
+        if self.memory and hasattr(self.memory, "conn"):
+            await self.memory.conn.close()
