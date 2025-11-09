@@ -1,15 +1,16 @@
-from agents.evaluator import evaluator_agent
 from schema import State, EvaluatorOutput
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
 from typing import Any
 from tools.file_code import file_code_tools
 from tools.navigation import playwright_tools
 from tools.search import search_tools
 from tools.notifications import whatsapp_tool
 from agents.worker import worker_agent
+from agents.clarifier import clarifier_agent
+from agents.evaluator import evaluator_agent
 from db.sql_memory import setup_memory
 import uuid
 import asyncio
@@ -17,6 +18,7 @@ import asyncio
 
 class Sidekick:
     def __init__(self):
+        self.clarifier_llm_with_output = None
         self.worker_llm_with_tools = None
         self.evaluator_llm_with_output = None
         self.tools = None
@@ -33,17 +35,19 @@ class Sidekick:
         self.tools += await file_code_tools()
         self.tools += await search_tools()
         self.tools.append(whatsapp_tool)
-        worker_llm = ChatOpenAI(model="gpt-4o-mini")
-        self.worker_llm_with_tools = worker_llm.bind_tools(self.tools)
-        evaluator_llm = ChatOpenAI(model="gpt-4o-mini")
-        self.evaluator_llm_with_output = evaluator_llm.with_structured_output(EvaluatorOutput)
+        self.clarifier_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(State)
+        self.worker_llm_with_tools = ChatOpenAI(model="gpt-4o-mini").bind_tools(self.tools)
+        self.evaluator_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(EvaluatorOutput)
         await self.build_graph()
+
+    def clarifier(self, state: State) -> State:
+        return clarifier_agent(self.clarifier_llm_with_output, state)
 
     def worker(self, state: State) -> dict[str, list[BaseMessage]]:
         return worker_agent(self.worker_llm_with_tools, state)
 
     def worker_router(self, state: State) -> str:
-        last_message = state["messages"][-1]
+        last_message = state.messages[-1]
 
         if hasattr(last_message, "tool_calls") and last_message.tool_calls:
             return "tools"
@@ -75,11 +79,13 @@ class Sidekick:
         graph_builder = StateGraph(State)
 
         # Add nodes
+        graph_builder.add_node("clarifier", self.clarifier)
         graph_builder.add_node("worker", self.worker)
         graph_builder.add_node("tools", ToolNode(tools=self.tools))
         graph_builder.add_node("evaluator", self.evaluator)
 
         # Add edges
+        graph_builder.add_edge(START, "clarifier")
         graph_builder.add_conditional_edges("worker", self.worker_router, {"tools": "tools", "evaluator": "evaluator"})
         graph_builder.add_edge("tools", "worker")
         graph_builder.add_conditional_edges("evaluator", self.route_based_on_evaluation, {"worker": "worker", "END": END})
@@ -91,13 +97,18 @@ class Sidekick:
     async def run_superstep(self, message, success_criteria, history):
         config = {"configurable": {"thread_id": self.sidekick_id}}
 
-        state = {
-            "messages": message,
-            "success_criteria": success_criteria or "The answer should be clear and accurate",
-            "feedback_on_work": None,
-            "success_criteria_met": False,
-            "user_input_needed": False
-        }
+        if isinstance(message, str):
+            message = [HumanMessage(content=message)]
+        elif isinstance(message, BaseMessage):
+            message = [message]
+
+        state = State(
+            messages=message,
+            success_criteria=success_criteria or "The answer should be clear and accurate",
+            success_criteria_met=False,
+            user_input_needed=False,
+        )
+
         result = await self.graph.ainvoke(state, config=config)
         user = {"role": "user", "content": message}
         reply = {"role": "assistant", "content": result["messages"][-2].content}

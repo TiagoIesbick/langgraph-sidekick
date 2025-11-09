@@ -15,7 +15,7 @@ You have a tool to run python code, but note that you would need to include a pr
 The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 This is the success criteria:
-{state['success_criteria']}
+{state.success_criteria}
 You should reply either with a question for the user about this assignment, or with your final response.
 If you have a question for the user, you need to reply by clearly stating your question. An example might be:
 
@@ -24,18 +24,18 @@ Question: please clarify whether you want a summary or a detailed answer
 If you've finished, reply with the final answer, and don't ask a question; simply reply with the answer.
 """
 
-    if state.get("feedback_on_work"):
+    if state.feedback_on_work:
         system_message += f"""
 Previously you thought you completed the assignment, but your reply was rejected because the success criteria was not met.
 Here is the feedback on why this was rejected:
-{state['feedback_on_work']}
+{state.feedback_on_work}
 With this feedback, please continue the assignment, ensuring that you meet the success criteria or have a question for the user.
 """
 
     # Add in the system message
 
     found_system_message = False
-    messages = state["messages"]
+    messages = state.messages
     for message in messages:
         if isinstance(message, SystemMessage):
             message.content = system_message
