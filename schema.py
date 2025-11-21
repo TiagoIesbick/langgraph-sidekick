@@ -8,23 +8,19 @@ import json
 
 class State(BaseModel):
     messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
-    success_criteria: str
+    success_criteria: Optional[str] = None
     feedback_on_work: Optional[str] = None
-    success_criteria_met: bool
-    user_input_needed: bool
+    success_criteria_met: bool = False
+    user_input_needed: bool = False
     plan: Optional[str] = None
     subtasks: Optional[list[str]] = None
     research_context: Optional[str] = None
     execution_results: Optional[str] = None
     final_answer: Optional[str] = None
 
-    def to_json_str(self) -> str:
-        """Compact JSON string for feeding into prompts."""
-        return json.dumps(self.model_dump(exclude_none=True), separators=(",", ":"))
-
 
 class ClarifierStateDiff(BaseModel):
-    messages: Optional[list[dict]] = None
+    messages: Optional[list[dict[str, Any]]] = None
     user_input_needed: Optional[bool] = None
 
 

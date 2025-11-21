@@ -1,3 +1,4 @@
+from urllib.parse import _ResultMixinStr
 from schema import State, EvaluatorOutput, ClarifierOutput
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
@@ -41,7 +42,7 @@ class Sidekick:
         await self.build_graph()
 
     def clarifier(self, state: State) -> State:
-        return clarifier_agent(self.clarifier_llm_with_output, state)
+        return clarifier_agent(self.clarifier_llm_with_output, self.format_conversation, state)
 
     def worker(self, state: State) -> dict[str, list[BaseMessage]]:
         return worker_agent(self.worker_llm_with_tools, state)
@@ -73,6 +74,9 @@ class Sidekick:
         else:
             return "worker"
 
+    def route_based_on_clarifition(self, state: State) -> str:
+        return "END" if state.user_input_needed else "done"
+
 
     async def build_graph(self):
         # Set up Graph Builder with State
@@ -86,6 +90,11 @@ class Sidekick:
 
         # Add edges
         graph_builder.add_edge(START, "clarifier")
+        graph_builder.add_conditional_edges(
+            "clarifier",
+            self.route_based_on_clarifition,
+            {"END": END, "done": END}
+        )
         # graph_builder.add_conditional_edges("worker", self.worker_router, {"tools": "tools", "evaluator": "evaluator"})
         # graph_builder.add_edge("tools", "worker")
         # graph_builder.add_conditional_edges("evaluator", self.route_based_on_evaluation, {"worker": "worker", "END": END})
@@ -102,20 +111,17 @@ class Sidekick:
         elif isinstance(message, BaseMessage):
             message = [message]
 
-        state = State(
-            messages=message,
-            success_criteria=success_criteria or "The answer should be clear and accurate",
-            success_criteria_met=False,
-            user_input_needed=False,
+        initial_state = State(
+            messages=message
         )
 
-        print('[State]:', state.model_json_schema())
+        print('[State]:', initial_state.model_json_schema())
 
-        result = await self.graph.ainvoke(state, config=config)
-        user = {"role": "user", "content": message}
-        reply = {"role": "assistant", "content": result["messages"][-2].content}
-        feedback = {"role": "assistant", "content": result["messages"][-1].content}
-        return history + [user, reply, feedback]
+        result = await self.graph.ainvoke(initial_state, config=config)
+        user = {"role": "user", "content":  message[0].content}
+        reply = {"role": "assistant", "content": result["messages"][-1].content}
+        # feedback = {"role": "assistant", "content": result["messages"][-1].content}
+        return history + [user, reply], result.get("user_input_needed", False)
 
     async def cleanup(self):
         if self.browser:
