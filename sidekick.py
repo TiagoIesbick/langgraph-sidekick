@@ -1,4 +1,4 @@
-from schema import State, EvaluatorOutput
+from schema import State, EvaluatorOutput, ClarifierOutput
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
@@ -35,7 +35,7 @@ class Sidekick:
         self.tools += await file_code_tools()
         self.tools += await search_tools()
         self.tools.append(whatsapp_tool)
-        self.clarifier_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(State)
+        self.clarifier_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(ClarifierOutput, method="function_calling")
         self.worker_llm_with_tools = ChatOpenAI(model="gpt-4o-mini").bind_tools(self.tools)
         self.evaluator_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(EvaluatorOutput)
         await self.build_graph()
@@ -80,16 +80,16 @@ class Sidekick:
 
         # Add nodes
         graph_builder.add_node("clarifier", self.clarifier)
-        graph_builder.add_node("worker", self.worker)
-        graph_builder.add_node("tools", ToolNode(tools=self.tools))
-        graph_builder.add_node("evaluator", self.evaluator)
+        # graph_builder.add_node("worker", self.worker)
+        # graph_builder.add_node("tools", ToolNode(tools=self.tools))
+        # graph_builder.add_node("evaluator", self.evaluator)
 
         # Add edges
         graph_builder.add_edge(START, "clarifier")
-        graph_builder.add_conditional_edges("worker", self.worker_router, {"tools": "tools", "evaluator": "evaluator"})
-        graph_builder.add_edge("tools", "worker")
-        graph_builder.add_conditional_edges("evaluator", self.route_based_on_evaluation, {"worker": "worker", "END": END})
-        graph_builder.add_edge(START, "worker")
+        # graph_builder.add_conditional_edges("worker", self.worker_router, {"tools": "tools", "evaluator": "evaluator"})
+        # graph_builder.add_edge("tools", "worker")
+        # graph_builder.add_conditional_edges("evaluator", self.route_based_on_evaluation, {"worker": "worker", "END": END})
+        # graph_builder.add_edge(START, "worker")
 
         # Compile the graph
         self.graph = graph_builder.compile(checkpointer=self.memory)
@@ -108,6 +108,8 @@ class Sidekick:
             success_criteria_met=False,
             user_input_needed=False,
         )
+
+        print('[State]:', state.model_json_schema())
 
         result = await self.graph.ainvoke(state, config=config)
         user = {"role": "user", "content": message}

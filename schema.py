@@ -1,19 +1,13 @@
 from typing import Annotated
-from typing_extensions import Any, Optional, Union
-from pydantic import BaseModel, Field
+from typing_extensions import Any, Optional, Union, Literal
+from pydantic import BaseModel, Field, ConfigDict
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, AIMessage
 import json
 
 
 class State(BaseModel):
-    model_config = {
-        "extra": "forbid",               # 🚨 Required for OpenAI structured outputs
-        "json_schema_extra": {
-            "additionalProperties": False  # 🚨 This explicitly satisfies the OpenAI validator
-        }
-    }
-    messages: Annotated[list[Union[BaseMessage, dict[str, Any]]], add_messages] = Field(default_factory=list)
+    messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
     success_criteria: str
     feedback_on_work: Optional[str] = None
     success_criteria_met: bool
@@ -27,6 +21,15 @@ class State(BaseModel):
     def to_json_str(self) -> str:
         """Compact JSON string for feeding into prompts."""
         return json.dumps(self.model_dump(exclude_none=True), separators=(",", ":"))
+
+
+class ClarifierStateDiff(BaseModel):
+    messages: Optional[list[dict]] = None
+    user_input_needed: Optional[bool] = None
+
+
+class ClarifierOutput(BaseModel):
+    state_diff: ClarifierStateDiff
 
 
 class EvaluatorOutput(BaseModel):
