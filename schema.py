@@ -14,6 +14,8 @@ class State(BaseModel):
     user_input_needed: bool = False
     plan: Optional[str] = None
     subtasks: Optional[list[str]] = None
+    current_task_index: int = 0
+    task_results: list[str] = Field(default_factory=list)
     research_context: Optional[str] = None
     execution_results: Optional[str] = None
     final_answer: Optional[str] = None
@@ -26,6 +28,17 @@ class ClarifierStateDiff(BaseModel):
 
 class ClarifierOutput(BaseModel):
     state_diff: ClarifierStateDiff
+
+
+class PlannerStateDiff(BaseModel):
+    plan: str
+    subtasks: list[str]
+    success_criteria: str
+    messages: Optional[list[dict[str, Any]]] = None
+
+
+class PlannerOutput(BaseModel):
+    state_diff: PlannerStateDiff
 
 
 class EvaluatorOutput(BaseModel):
