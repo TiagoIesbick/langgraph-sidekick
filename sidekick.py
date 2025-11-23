@@ -1,5 +1,4 @@
-from urllib.parse import _ResultMixinStr
-from schema import State, EvaluatorOutput, ClarifierOutput
+from schema import PlannerOutput, State, EvaluatorOutput, ClarifierOutput
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
@@ -11,6 +10,7 @@ from tools.search import search_tools
 from tools.notifications import whatsapp_tool
 from agents.worker import worker_agent
 from agents.clarifier import clarifier_agent
+from agents.planner import planner_agent
 from agents.evaluator import evaluator_agent
 from db.sql_memory import setup_memory
 import uuid
@@ -20,6 +20,7 @@ import asyncio
 class Sidekick:
     def __init__(self):
         self.clarifier_llm_with_output = None
+        self.planner_llm_with_output = None
         self.worker_llm_with_tools = None
         self.evaluator_llm_with_output = None
         self.tools = None
@@ -37,12 +38,16 @@ class Sidekick:
         self.tools += await search_tools()
         self.tools.append(whatsapp_tool)
         self.clarifier_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(ClarifierOutput, method="function_calling")
+        self.planner_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(PlannerOutput, method="function_calling")
         self.worker_llm_with_tools = ChatOpenAI(model="gpt-4o-mini").bind_tools(self.tools)
         self.evaluator_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(EvaluatorOutput)
         await self.build_graph()
 
     def clarifier(self, state: State) -> State:
-        return clarifier_agent(self.clarifier_llm_with_output, self.format_conversation, state)
+        return clarifier_agent(self.clarifier_llm_with_output, state)
+
+    def planner(self, state: State) -> State:
+        return planner_agent(self.planner_llm_with_output, state)
 
     def worker(self, state: State) -> dict[str, list[BaseMessage]]:
         return worker_agent(self.worker_llm_with_tools, state)
@@ -55,18 +60,8 @@ class Sidekick:
         else:
             return "evaluator"
 
-    def format_conversation(self, messages: list[Any]) -> str:
-        conversation = "Conversation history:\n\n"
-        for message in messages:
-            if isinstance(message, HumanMessage):
-                conversation += f"User: {message.content}\n"
-            elif isinstance(message, AIMessage):
-                text = message.content or "[Tools use]"
-                conversation += f"Assistant: {text}\n"
-        return conversation
-
     def evaluator(self, state: State) -> State:
-        return evaluator_agent(self.evaluator_llm_with_output, self.format_conversation, state)
+        return evaluator_agent(self.evaluator_llm_with_output, state)
 
     def route_based_on_evaluation(self, state: State) -> str:
         if state["success_criteria_met"] or state["user_input_needed"]:
@@ -75,7 +70,10 @@ class Sidekick:
             return "worker"
 
     def route_based_on_clarifition(self, state: State) -> str:
-        return "END" if state.user_input_needed else "done"
+        return "END" if state.user_input_needed else "planner"
+
+    def route_based_on_planner(self, state: State) -> str:
+        return "END" if state.user_input_needed else "planner"
 
 
     async def build_graph(self):
@@ -84,6 +82,7 @@ class Sidekick:
 
         # Add nodes
         graph_builder.add_node("clarifier", self.clarifier)
+        graph_builder.add_node("planner", self.planner)
         # graph_builder.add_node("worker", self.worker)
         # graph_builder.add_node("tools", ToolNode(tools=self.tools))
         # graph_builder.add_node("evaluator", self.evaluator)
@@ -93,8 +92,9 @@ class Sidekick:
         graph_builder.add_conditional_edges(
             "clarifier",
             self.route_based_on_clarifition,
-            {"END": END, "done": END}
+            {"END": END, "planner": "planner"}
         )
+        graph_builder.add_edge("planner", END)
         # graph_builder.add_conditional_edges("worker", self.worker_router, {"tools": "tools", "evaluator": "evaluator"})
         # graph_builder.add_edge("tools", "worker")
         # graph_builder.add_conditional_edges("evaluator", self.route_based_on_evaluation, {"worker": "worker", "END": END})
@@ -114,8 +114,6 @@ class Sidekick:
         initial_state = State(
             messages=message
         )
-
-        print('[State]:', initial_state.model_json_schema())
 
         result = await self.graph.ainvoke(initial_state, config=config)
         user = {"role": "user", "content":  message[0].content}

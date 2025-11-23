@@ -1,22 +1,14 @@
 from schema import ClarifierOutput, State, ClarifierStateDiff
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from utils.utils import dict_to_aimessage, format_conversation
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import LanguageModelInput
 from langchain_openai.chat_models.base import _DictOrPydantic
-from langgraph.graph import END
 from datetime import datetime
-from typing import Any, Callable
-
-
-def _dict_to_aimessage(d: dict[str, Any]) -> AIMessage:
-    # Accepts either {"content": "...", "type":"assistant"} or {"content": "..."}
-    content = d.get("content") if isinstance(d, dict) else str(d)
-    return AIMessage(content=content)
 
 
 def clarifier_agent(
     llm_with_output: Runnable[LanguageModelInput, _DictOrPydantic],
-    format_conversation: Callable[[list[Any]], str],
     state: State
 ) -> dict:
 
@@ -54,7 +46,7 @@ Rules:
 """
     last_user_input = state.messages[-1].content if state.messages else "(no messages)"
 
-    user_message = f"""
+    human_message = f"""
 Here is the full conversation so far:
 {format_conversation(state.messages)}
 
@@ -69,7 +61,7 @@ Your job:
 
     llm_response: ClarifierOutput  = llm_with_output.invoke([
         SystemMessage(content=system_message),
-        HumanMessage(content=user_message)
+        HumanMessage(content=human_message)
     ])
 
     diff: ClarifierStateDiff = llm_response.state_diff
@@ -77,7 +69,7 @@ Your job:
     updates: dict = {}
 
     if diff.messages:
-        updates["messages"] = [_dict_to_aimessage(m) for m in diff.messages]
+        updates["messages"] = [dict_to_aimessage(m) for m in diff.messages]
 
     updates["user_input_needed"] = bool(diff.user_input_needed)
 
