@@ -6,6 +6,35 @@ from langchain_core.language_models import LanguageModelInput
 from langchain_openai.chat_models.base import _DictOrPydantic
 from datetime import datetime
 from typing import Any
+import json
+
+
+CAPABILITIES_MANIFEST = {
+    "researcher": {
+        "description": "Finds information online, navigates the web, extracts structured content.",
+        "tools": [
+            "search", "wikipedia", "click", "navigate",
+            "navigate_back", "extract_text", "extract_hyperlinks",
+            "get_elements", "current_web_page"
+        ]
+    },
+    "executor": {
+        "description": "Runs code, handles files, performs external actions.",
+        "tools": [
+            "python_repl", "copy_file", "delete_file",
+            "file_search", "move_file", "read_file", "write_file",
+            "list_directory", "send_whatsapp"
+        ]
+    },
+    "summarizer": {
+        "description": "Summarizes text, rewrites content, produces narratives.",
+        "tools": []
+    },
+    "evaluator": {
+        "description": "Evaluates work against success criteria, detects issues.",
+        "tools": []
+    }
+}
 
 
 def planner_agent(
@@ -23,6 +52,17 @@ Task:
     - A list of subtasks (atomic, sequential)
     - Success criteria (string)
 
+Capabilities Manifest (required for assigning subtasks):
+{json.dumps(CAPABILITIES_MANIFEST, indent=2)}
+
+Subtask Semantics:
+- "task": a minimal actionable instruction.
+- "assigned_to": which agent should execute it:
+    - researcher
+    - executor
+    - summarizer
+    - evaluator
+
 Output Requirements:
 - You MUST output ONLY JSON.
 - Structure your output EXACTLY like this:
@@ -30,7 +70,10 @@ Output Requirements:
 {{
     "state_diff": {{
         "plan": "...",
-        "subtasks": ["...", "..."],
+        "subtasks": [
+            {{ "task": "...", "assigned_to": "researcher" }},
+            {{ "task": "...", "assigned_to": "summarizer" }}
+        ],
         "success_criteria": "...",
         "messages": [ {{ "type": "assistant", "content": "..." }} ]
     }}

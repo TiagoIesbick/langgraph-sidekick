@@ -1,9 +1,28 @@
 from typing import Annotated
-from typing_extensions import Any, Optional, Union, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from typing_extensions import Any, Optional, Literal
+from pydantic import BaseModel, Field
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, AIMessage
-import json
+from langchain_core.messages import BaseMessage
+
+
+class Subtask(BaseModel):
+    task: str = Field(
+        description=(
+            "A single atomic action the assigned agent must perform. "
+            "This should be a concise, executable instruction such as "
+            "'search for the latest USD/BRL exchange rate', "
+            "'extract the numeric rate from the page contents', or "
+            "'summarize the research findings'. "
+            "The task must be actionable, specific, and should not contain "
+            "multiple independent steps."
+        )
+    )
+    assigned_to: Literal[
+        "researcher",
+        "executor",
+        "summarizer",
+        "evaluator"
+    ]
 
 
 class State(BaseModel):
@@ -13,7 +32,7 @@ class State(BaseModel):
     success_criteria_met: bool = False
     user_input_needed: bool = False
     plan: Optional[str] = None
-    subtasks: Optional[list[str]] = None
+    subtasks: Optional[list[Subtask]] = None
     current_task_index: int = 0
     task_results: list[str] = Field(default_factory=list)
     research_context: Optional[str] = None
@@ -32,7 +51,7 @@ class ClarifierOutput(BaseModel):
 
 class PlannerStateDiff(BaseModel):
     plan: str
-    subtasks: list[str]
+    subtasks: list[Subtask]
     success_criteria: str
     messages: Optional[list[dict[str, Any]]] = None
 
