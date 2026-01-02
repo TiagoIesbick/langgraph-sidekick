@@ -11,7 +11,8 @@ def researcher_agent(
     llm_with_tools: Runnable[LanguageModelInput, BaseMessage],
     state: State
 ) -> dict:
-    current = state.subtasks.pop(0)
+    current = state.subtasks[0]
+    remaining = state.subtasks[1:]
 
     system_msg = f"""
 Role:
@@ -30,18 +31,17 @@ Rules:
 - Do not include any additional commentary other than the summary itself.
 """
 
-    human_message = f"""
-Here is the user request:
-{current.task}
-"""
+    human_msg = f"Task:\n{current.task}"
+
     llm_response = llm_with_tools.invoke([
         SystemMessage(content=system_msg),
-        HumanMessage(content=human_message)
+        HumanMessage(content=human_msg)
     ])
 
     print('[researcher]:', llm_response)
 
     return {
-        "execution_results": llm_response,
-        "messages": [AIMessage(content=f"Research completed: {llm_response}")]
+        "task_results": [llm_response.content],
+        "messages": [AIMessage(content=f"Research completed for task: {current.task}")],
+        "subtasks": remaining
     }
