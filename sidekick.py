@@ -60,17 +60,17 @@ class Sidekick:
         return summarizer_agent(self.summarizer_llm, state)
 
     def researcher_router(self, state: State) -> str:
-        print("[researcher_router] index:", state.current_task_index)
+        print("[researcher_router] index:", state.current_subtask_index)
 
         # 1. No plan yet
         if not state.subtasks:
             return "planner"
 
         # 2. All tasks done
-        if state.current_task_index >= len(state.subtasks):
+        if state.current_subtask_index >= len(state.subtasks):
             return "evaluator"
 
-        current = state.subtasks[state.current_task_index]
+        current = state.subtasks[state.current_subtask_index]
 
         # 3. Task not for researcher → hand off
         if current.assigned_to != "researcher":

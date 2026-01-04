@@ -19,7 +19,7 @@ Task:
 {current.task}
 
 Inputs (from previous agents):
-{chr(10).join(f"- {r}" for r in state.task_results)}
+{chr(10).join(f"- {r}" for r in state.subtask_results)}
 
 Rules:
 - From the previous agents inputs, synthetize a report.

@@ -8,13 +8,14 @@ from langchain_core.messages import BaseMessage
 class Subtask(BaseModel):
     task: str = Field(
         description=(
-            "A single atomic action the assigned agent must perform. "
-            "This should be a concise, executable instruction such as "
-            "'search for the latest USD/BRL exchange rate', "
-            "'extract the numeric rate from the page contents', or "
-            "'summarize the research findings'. "
-            "The task must be actionable, specific, and should not contain "
-            "multiple independent steps."
+            "A single executable responsibility assigned to an agent. "
+            "A task may involve multiple internal steps (including tool calls), "
+            "but must result in a clear, explicit update to the shared state "
+            "that signals task completion.\n\n"
+            "Tasks MUST be defined in terms of outcomes, not intermediate actions. "
+            "If tool usage and data extraction are required, they must be included "
+            "in the same task unless the output is explicitly written to a named "
+            "state field for subsequent tasks to consume.\n\n"
         )
     )
     assigned_to: Literal[
@@ -33,10 +34,10 @@ class State(BaseModel):
     user_input_needed: bool = False
     plan: Optional[str] = None
     subtasks: Optional[list[Subtask]] = None
-    current_task_index: int = 0
-    task_results: list[str] = Field(default_factory=list)
-    research_context: Optional[str] = None
-    execution_results: Optional[str] = None
+    current_subtask_index: int = 0
+    subtask_results: list[str] = Field(default_factory=list)
+    # research_context: Optional[str] = None
+    # execution_results: Optional[str] = None
     final_answer: Optional[str] = None
 
 

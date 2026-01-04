@@ -15,10 +15,10 @@ def researcher_agent(
     if not state.subtasks:
         raise RuntimeError("Researcher invoked with no subtasks")
 
-    if state.current_task_index >= len(state.subtasks):
+    if state.current_subtask_index >= len(state.subtasks):
         raise RuntimeError("Researcher invoked with invalid task index")
 
-    current = state.subtasks[state.current_task_index]
+    current = state.subtasks[state.current_subtask_index]
 
     if current.assigned_to != "researcher":
         raise RuntimeError(
@@ -48,11 +48,11 @@ Rules:
 
     if isinstance(last_message, ToolMessage):
         return {
-            "task_results": state.task_results + [last_message.content],
+            "subtask_results": state.subtask_results + [last_message.content],
             "messages": [
                 AIMessage(content=f"Research completed for task: {current.task}")
             ],
-            "current_task_index": state.current_task_index + 1
+            "current_subtask_index": state.current_subtask_index + 1
         }
 
     llm_response = llm_with_tools.invoke([
@@ -68,7 +68,7 @@ Rules:
         }
 
     return {
-        "task_results": state.task_results + [llm_response.content],
+        "subtask_results": state.subtask_results + [llm_response.content],
         "messages": [AIMessage(content=f"Research completed for task: {current.task}")],
-        "current_task_index": state.current_task_index + 1
+        "current_subtask_index": state.current_subtask_index + 1
     }
