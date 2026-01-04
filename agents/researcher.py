@@ -1,5 +1,5 @@
 from schema import State
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from datetime import datetime
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import LanguageModelInput
@@ -11,8 +11,19 @@ def researcher_agent(
     llm_with_tools: Runnable[LanguageModelInput, BaseMessage],
     state: State
 ) -> dict:
-    current = state.subtasks[0]
-    remaining = state.subtasks[1:]
+
+    if not state.subtasks:
+        raise RuntimeError("Researcher invoked with no subtasks")
+
+    if state.current_task_index >= len(state.subtasks):
+        raise RuntimeError("Researcher invoked with invalid task index")
+
+    current = state.subtasks[state.current_task_index]
+
+    if current.assigned_to != "researcher":
+        raise RuntimeError(
+            f"Researcher invoked for task assigned to {current.assigned_to}"
+        )
 
     system_msg = f"""
 Role:
@@ -33,6 +44,17 @@ Rules:
 
     human_msg = f"Task:\n{current.task}"
 
+    last_message = state.messages[-1]
+
+    if isinstance(last_message, ToolMessage):
+        return {
+            "task_results": state.task_results + [last_message.content],
+            "messages": [
+                AIMessage(content=f"Research completed for task: {current.task}")
+            ],
+            "current_task_index": state.current_task_index + 1
+        }
+
     llm_response = llm_with_tools.invoke([
         SystemMessage(content=system_msg),
         HumanMessage(content=human_msg)
@@ -40,8 +62,13 @@ Rules:
 
     print('[researcher]:', llm_response)
 
+    if llm_response.tool_calls:
+        return {
+            "messages": [llm_response],
+        }
+
     return {
-        "task_results": [llm_response.content],
+        "task_results": state.task_results + [llm_response.content],
         "messages": [AIMessage(content=f"Research completed for task: {current.task}")],
-        "subtasks": remaining
+        "current_task_index": state.current_task_index + 1
     }

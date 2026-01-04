@@ -60,12 +60,37 @@ class Sidekick:
         return summarizer_agent(self.summarizer_llm, state)
 
     def researcher_router(self, state: State) -> str:
-        last_message = state.messages[-1]
+        print("[researcher_router] index:", state.current_task_index)
 
-        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-            return "researcher_tools"
-        else:
-            return "researcher"
+        # 1. No plan yet
+        if not state.subtasks:
+            return "planner"
+
+        # 2. All tasks done
+        if state.current_task_index >= len(state.subtasks):
+            return "evaluator"
+
+        current = state.subtasks[state.current_task_index]
+
+        # 3. Task not for researcher → hand off
+        if current.assigned_to != "researcher":
+            return current.assigned_to
+
+        # 4. Tool call in progress
+        if state.messages:
+            last = state.messages[-1]
+            if getattr(last, "tool_calls", None):
+                return "researcher_tools"
+
+        # 5. Otherwise keep researching
+        return "researcher"
+        # print(f"[researcher_router]: {state}")
+        # last_message = state.messages[-1]
+
+        # if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        #     return "researcher_tools"
+        # else:
+        #     return "researcher"
 
     def worker(self, state: State) -> dict[str, list[BaseMessage]]:
         return worker_agent(self.worker_llm_with_tools, state)
@@ -126,7 +151,18 @@ class Sidekick:
                 # "evaluator": "evaluator"
             }
         )
-        graph_builder.add_conditional_edges("researcher", self.researcher_router, {"researcher_tools": "researcher_tools", "researcher": "researcher"})
+        graph_builder.add_conditional_edges(
+            "researcher",
+            self.researcher_router,
+            {
+                "researcher_tools": "researcher_tools",
+                "planner": "planner",
+                "researcher": "researcher",
+                # "executor": "executor",
+                "summarizer": "summarizer",
+                # "evaluator": "evaluator"
+            }
+        )
         graph_builder.add_edge("researcher_tools", "researcher")
         # graph_builder.add_conditional_edges("worker", self.worker_router, {"tools": "tools", "evaluator": "evaluator"})
         # graph_builder.add_edge("tools", "worker")
