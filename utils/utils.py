@@ -1,5 +1,7 @@
-from typing import Any
+from typing import Any, Optional
 from langchain_core.messages import AIMessage, HumanMessage
+from enum import Enum
+from schema import ToolInference
 
 
 CAPABILITIES_MANIFEST = {
@@ -29,6 +31,30 @@ CAPABILITIES_MANIFEST = {
     }
 }
 
+
+class ToolSafety(str, Enum):
+    READ_ONLY = "read_only"
+    IRREVERSIBLE = "irreversible"
+    SANDBOXED_COMPUTE = "sandboxed_compute"
+
+
+EXECUTOR_TOOL_SAFETY = {
+    # Safe
+    "read_file": ToolSafety.READ_ONLY,
+    "file_search": ToolSafety.READ_ONLY,
+    "list_directory": ToolSafety.READ_ONLY,
+
+    # Sandboxed but potentially harmful
+    "python_repl": ToolSafety.SANDBOXED_COMPUTE,
+
+    # Irreversible
+    "write_file": ToolSafety.IRREVERSIBLE,
+    "delete_file": ToolSafety.IRREVERSIBLE,
+    "move_file": ToolSafety.IRREVERSIBLE,
+    "copy_file": ToolSafety.IRREVERSIBLE,
+    "send_whatsapp": ToolSafety.IRREVERSIBLE,
+}
+
 def dict_to_aimessage(d: dict[str, Any]) -> AIMessage:
     # Accepts either {"content": "...", "type":"assistant"} or {"content": "..."}
     content = d.get("content") if isinstance(d, dict) else str(d)
@@ -43,3 +69,33 @@ def format_conversation(messages: list[Any]) -> str:
                 text = message.content or "[Tools use]"
                 conversation += f"Assistant: {text}\n"
         return conversation
+
+def infer_tool_name(message: AIMessage) -> Optional[ToolInference]:
+    """
+    Extracts the tool name from a structured AIMessage.
+    Returns None if no tool call exists.
+    Raises if the message is malformed.
+    """
+
+    if not isinstance(message, AIMessage):
+        return None
+
+    tool_calls = getattr(message, "tool_calls", None)
+
+    if not tool_calls:
+        return None
+
+    if len(tool_calls) != 1:
+        raise RuntimeError(
+            f"Expected exactly one tool call, got {len(tool_calls)}"
+        )
+
+    tool_call = tool_calls[0]
+
+    if "name" not in tool_call:
+        raise RuntimeError("Malformed tool call: missing 'name'")
+
+    return ToolInference(
+        tool_name=tool_call["name"],
+        tool_call_id=tool_call["id"],
+    )

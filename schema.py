@@ -24,6 +24,7 @@ class Subtask(BaseModel):
         "summarizer",
         "evaluator"
     ]
+    requires_side_effects: bool = False
 
 
 class State(BaseModel):
@@ -65,3 +66,29 @@ class EvaluatorOutput(BaseModel):
     feedback: str = Field(description="Feedback on the assistant's response")
     success_criteria_met: bool = Field(description="Whether the success criteria have been met")
     user_input_needed: bool = Field(description="True if more input is needed from the user, or clarifications, or the assistant is stuck")
+
+
+ToolName = Literal[
+    "search",
+    "wikipedia",
+    "click",
+    "navigate",
+    "navigate_back",
+    "extract_text",
+    "extract_hyperlinks",
+    "get_elements",
+    "current_web_page",
+    "python_repl",
+    "copy_file",
+    "delete_file",
+    "file_search",
+    "move_file",
+    "read_file",
+    "write_file",
+    "list_directory",
+    "send_whatsapp",
+]
+
+class ToolInference(BaseModel):
+    tool_name: ToolName
+    tool_call_id: str

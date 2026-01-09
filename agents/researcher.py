@@ -40,6 +40,7 @@ Rules:
 - Capture the main points.
 - This will be consumed by someone synthesizing a report, so its vital you capture the essence and ignore any fluff.
 - Do not include any additional commentary other than the summary itself.
+- The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
 """
 
     human_msg = f"Task:\n{current.task}"

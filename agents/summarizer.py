@@ -4,33 +4,32 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 
 def summarizer_agent(llm, state: State) -> dict:
-    
+
     print(f"[summarizer_state]: {state}")
 
-    current = state.subtasks[0]
-
-    
+    current = state.subtasks[state.current_subtask_index]
 
     system_msg = f"""
 Role:
 You are the Summarizer Agent.
 
 Task:
-{current.task}
+- From the previous agents results, synthetize a report.
 
-Inputs (from previous agents):
+Results (from previous agents):
 {chr(10).join(f"- {r}" for r in state.subtask_results)}
 
 Rules:
-- From the previous agents inputs, synthetize a report.
 - Capture the main points.
 - Do not introduce new information.
 - Do not include any additional commentary other than the report itself.
-    """
+"""
+
+    human_msg = f"Task:\n{current.task}"
 
     llm_response = llm.invoke([
         SystemMessage(content=system_msg),
-        HumanMessage(content=current.task)
+        HumanMessage(content=human_msg)
     ])
 
     print(f"[summarizer_response]: {llm_response}")

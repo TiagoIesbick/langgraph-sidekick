@@ -32,6 +32,13 @@ SYSTEM MODEL (CRITICAL — YOU MUST FOLLOW)
   - The message history (unstructured text)
 - Tool outputs appear ONLY as ToolMessages in the message list.
 - Tool outputs are NOT structured unless explicitly extracted by an agent.
+- Subtasks MAY include an optional boolean field:
+  - requires_side_effects
+- requires_side_effects indicates whether executing the task:
+  - Causes irreversible effects (sending messages, writing/deleting files)
+  - Mutates external state
+  - Produces artifacts outside the State object
+- This flag is used by the execution graph for safety gating.
 
 2. EXECUTION MODEL
 - Subtasks are executed SEQUENTIALLY.
@@ -50,6 +57,16 @@ SYSTEM MODEL (CRITICAL — YOU MUST FOLLOW)
   a SINGLE subtask assigned to the same agent.
 - DO NOT split tool usage and extraction into separate subtasks unless
   a structured State handoff is explicitly required.
+- Special rule for python_repl:
+  - If python_repl is used ONLY for computation, parsing, or analysis
+    of existing data, the subtask MUST set:
+        requires_side_effects = false
+  - If python_repl is used to:
+    - Write or generate files
+    - Modify stored data
+    - Prepare outputs for external delivery
+    then the subtask MUST set:
+        requires_side_effects = true
 
 4. FAILURE MODES TO AVOID
 DO NOT generate subtasks that:
@@ -88,6 +105,17 @@ SUBTASK DESIGN RULES (STRICT)
 - Prefer FEWER subtasks over more.
   One correct subtask is better than three ambiguous ones.
 
+- Subtasks assigned to the executor:
+  - MUST declare requires_side_effects when tools are used
+  - MUST set requires_side_effects=true for:
+      - File writes, moves, deletions
+      - Sending messages (e.g., WhatsApp)
+      - Any irreversible external action
+  - MUST set requires_side_effects=false for:
+      - Pure computation
+      - Parsing text
+      - Data transformation without persistence
+
 --------------------------------------------------------------------
 OUTPUT FORMAT (MANDATORY)
 --------------------------------------------------------------------
@@ -96,12 +124,18 @@ You MUST output ONLY valid JSON.
 You MUST NOT include explanations or commentary.
 
 Your output MUST match EXACTLY this structure:
+- requires_side_effects is OPTIONAL
+- If omitted, it is assumed to be false
 
 {{
     "state_diff": {{
         "plan": "<high-level plan as a single string>",
         "subtasks": [
-            {{ "task": "<clear, executable instruction>", "assigned_to": "<agent_name>" }}
+            {{
+              "task": "<clear, executable instruction>",
+              "assigned_to": "<agent_name>",
+              "requires_side_effects": false
+            }}
         ],
         "success_criteria": "<clear, verifiable condition>",
         "messages": [

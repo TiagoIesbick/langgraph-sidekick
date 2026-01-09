@@ -13,8 +13,10 @@ from agents.clarifier import clarifier_agent
 from agents.planner import planner_agent
 from agents.researcher import researcher_agent
 from agents.summarizer import summarizer_agent
+from agents.executor import executor_agent
 from agents.evaluator import evaluator_agent
 from db.sql_memory import setup_memory
+from utils.utils import infer_tool_name, EXECUTOR_TOOL_SAFETY, ToolSafety
 import uuid
 import asyncio
 
@@ -25,9 +27,10 @@ class Sidekick:
         self.planner_llm_with_output = None
         self.researcher_llm_with_tools = None
         self.summarizer_llm = None
+        self.executor_llm_with_tools = None
         self.evaluator_llm_with_output = None
         self.researcher_tools = None
-        self.llm_with_tools = None
+        self.executor_tools = None
         self.graph = None
         self.sidekick_id = str(uuid.uuid4())
         self.memory = None
@@ -37,12 +40,13 @@ class Sidekick:
     async def setup(self):
         self.memory = await setup_memory()
         self.researcher_tools, self.browser, self.playwright = await playwright_tools()
-        # self.tools += await file_code_tools()
         self.researcher_tools += await search_tools()
-        # self.tools.append(whatsapp_tool)
+        self.executor_tools = await file_code_tools()
+        self.executor_tools.append(whatsapp_tool)
         self.clarifier_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(ClarifierOutput, method="function_calling")
         self.planner_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(PlannerOutput, method="function_calling")
         self.researcher_llm_with_tools = ChatOpenAI(model="gpt-4o-mini").bind_tools(self.researcher_tools)
+        self.executor_llm_with_tools = ChatOpenAI(model="gpt-4o-mini").bind_tools(self.executor_tools)
         self.summarizer_llm = ChatOpenAI(model="gpt-4o-mini")
         self.evaluator_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(EvaluatorOutput)
         await self.build_graph()
@@ -58,6 +62,21 @@ class Sidekick:
 
     def summarizer(self, state: State) -> State:
         return summarizer_agent(self.summarizer_llm, state)
+
+    def executor(self, state: State) -> State:
+        return executor_agent(self.executor_llm_with_tools, state)
+
+    def evaluator(self, state: State) -> State:
+        return evaluator_agent(self.evaluator_llm_with_output, state)
+
+    def route_based_on_clarifition(self, state: State) -> str:
+        return "END" if state.user_input_needed else "planner"
+
+    def route_based_on_planner_subtasks(self, state: State) -> str:
+        if not state.subtasks:
+            return "evaluator"
+        next_task = state.subtasks[0]
+        return next_task.assigned_to
 
     def researcher_router(self, state: State) -> str:
         print("[researcher_router] index:", state.current_subtask_index)
@@ -79,40 +98,50 @@ class Sidekick:
         # 4. Tool call in progress
         if state.messages:
             last = state.messages[-1]
-            if getattr(last, "tool_calls", None):
+            tool = infer_tool_name(last)
+            if tool:
                 return "researcher_tools"
 
         # 5. Otherwise keep researching
         return "researcher"
 
-    def worker(self, state: State) -> dict[str, list[BaseMessage]]:
-        return worker_agent(self.worker_llm_with_tools, state)
+    def executor_router(state: State) -> str:
+        print("[executor_router] index:", state.current_subtask_index)
 
-    def worker_router(self, state: State) -> str:
-        last_message = state.messages[-1]
+        # 1. No plan yet
+        if not state.subtasks:
+            return "planner"
 
-        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-            return "tools"
-        else:
+        # 2. All tasks done
+        if state.current_subtask_index >= len(state.subtasks):
             return "evaluator"
 
-    def evaluator(self, state: State) -> State:
-        return evaluator_agent(self.evaluator_llm_with_output, state)
+        current = state.subtasks[state.current_subtask_index]
+
+        # 3. Task not for researcher → hand off
+        if current.assigned_to != "executor":
+            return current.assigned_to
+
+        # 4. Tool call in progress
+        if state.messages:
+            last = state.messages[-1]
+            tool = infer_tool_name(last)
+            if tool:
+                safety = EXECUTOR_TOOL_SAFETY.get(tool.tool_name)
+                if safety == ToolSafety.IRREVERSIBLE or (
+                    safety == ToolSafety.SANDBOXED_COMPUTE and current.requires_side_effects
+                ):
+                    return "evaluator"
+
+                return "executor_tools"
+
+        return "executor"
 
     def route_based_on_evaluation(self, state: State) -> str:
         if state["success_criteria_met"] or state["user_input_needed"]:
             return "END"
         else:
             return "worker"
-
-    def route_based_on_clarifition(self, state: State) -> str:
-        return "END" if state.user_input_needed else "planner"
-
-    def route_based_on_planner_subtasks(self, state: State) -> str:
-        if not state.subtasks:
-            return "evaluator"
-        next_task = state.subtasks[0]
-        return next_task.assigned_to
 
     async def build_graph(self):
         # Set up Graph Builder with State
@@ -123,9 +152,10 @@ class Sidekick:
         graph_builder.add_node("planner", self.planner)
         graph_builder.add_node("researcher", self.researcher)
         graph_builder.add_node("summarizer", self.summarizer)
-        # graph_builder.add_node("worker", self.worker)
+        graph_builder.add_node("executor", self.executor)
+        graph_builder.add_node("evaluator", self.evaluator)
         graph_builder.add_node("researcher_tools", ToolNode(tools=self.researcher_tools))
-        # graph_builder.add_node("evaluator", self.evaluator)
+        graph_builder.add_node("executor_tools", ToolNode(tools=self.executor_tools))
 
         # Add edges
         graph_builder.add_edge(START, "clarifier")
@@ -139,7 +169,7 @@ class Sidekick:
             self.route_based_on_planner_subtasks,
             {
                 "researcher": "researcher",
-                # "executor": "executor",
+                "executor": "executor",
                 "summarizer": "summarizer",
                 # "evaluator": "evaluator"
             }
@@ -151,12 +181,25 @@ class Sidekick:
                 "researcher_tools": "researcher_tools",
                 "planner": "planner",
                 "researcher": "researcher",
-                # "executor": "executor",
+                "executor": "executor",
+                "summarizer": "summarizer",
+                # "evaluator": "evaluator"
+            }
+        )
+        graph_builder.add_conditional_edges(
+            "executor",
+            self.executor_router,
+            {
+                "executor_tools": "executor_tools",
+                "planner": "planner",
+                "researcher": "researcher",
+                "executor": "executor",
                 "summarizer": "summarizer",
                 # "evaluator": "evaluator"
             }
         )
         graph_builder.add_edge("researcher_tools", "researcher")
+        graph_builder.add_edge("executor_tools", "executor")
         # graph_builder.add_conditional_edges("worker", self.worker_router, {"tools": "tools", "evaluator": "evaluator"})
         # graph_builder.add_edge("tools", "worker")
         # graph_builder.add_conditional_edges("evaluator", self.route_based_on_evaluation, {"worker": "worker", "END": END})
