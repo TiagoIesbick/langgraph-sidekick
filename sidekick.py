@@ -7,7 +7,6 @@ from tools.file_code import file_code_tools
 from tools.navigation import playwright_tools
 from tools.search import search_tools
 from tools.notifications import whatsapp_tool
-from agents.worker import worker_agent
 from agents.clarifier import clarifier_agent
 from agents.planner import planner_agent
 from agents.researcher import researcher_agent
@@ -68,31 +67,31 @@ class Sidekick:
     def evaluator(self, state: State) -> State:
         return evaluator_agent(self.evaluator_llm_with_output, state)
 
-    def route_based_on_clarifition(self, state: State) -> str:
+    def clarifier_router(self, state: State) -> str:
         return "END" if state.user_input_needed else "planner"
 
-    def route_based_on_planner_subtasks(self, state: State) -> str:
+    def planner_router(self, state: State) -> str:
         if not state.subtasks:
             return "evaluator"
         next_task = state.subtasks[0]
         return next_task.assigned_to
 
     def researcher_router(self, state: State) -> str:
-        print("[researcher_router] index:", state.current_subtask_index)
+        print("[researcher_router] index:", state.next_subtask_index)
 
         # 1. No plan yet
         if not state.subtasks:
             return "planner"
 
         # 2. All tasks done
-        if state.current_subtask_index >= len(state.subtasks):
+        if state.next_subtask_index >= len(state.subtasks):
             return "evaluator"
 
-        current = state.subtasks[state.current_subtask_index]
+        next_task = state.subtasks[state.next_subtask_index]
 
         # 3. Task not for researcher → hand off
-        if current.assigned_to != "researcher":
-            return current.assigned_to
+        if next_task.assigned_to != "researcher":
+            return next_task.assigned_to
 
         # 4. Tool call in progress
         if state.messages:
@@ -104,22 +103,39 @@ class Sidekick:
         # 5. Otherwise keep researching
         return "researcher"
 
+    def summarizer_router(self, state: State) -> str:
+        # 1. No plan yet
+        if not state.subtasks:
+            return "planner"
+
+        # 2. All tasks done
+        if state.next_subtask_index >= len(state.subtasks):
+            return "evaluator"
+
+        next_task = state.subtasks[state.next_subtask_index]
+
+        # 3. Task not for researcher → hand off
+        if next_task.assigned_to != "summarizer":
+            return next_task.assigned_to
+
+        return "summarizer"
+
     def executor_router(self, state: State) -> str:
-        print("[executor_router] index:", state.current_subtask_index)
+        print("[executor_router] index:", state.next_subtask_index)
 
         # 1. No plan yet
         if not state.subtasks:
             return "planner"
 
         # 2. All tasks done
-        if state.current_subtask_index >= len(state.subtasks):
+        if state.next_subtask_index >= len(state.subtasks):
             return "evaluator"
 
-        current = state.subtasks[state.current_subtask_index]
+        next_task = state.subtasks[state.next_subtask_index]
 
         # 3. Task not for researcher → hand off
-        if current.assigned_to != "executor":
-            return current.assigned_to
+        if next_task.assigned_to != "executor":
+            return next_task.assigned_to
 
         # 4. Tool call in progress
         if state.messages:
@@ -128,7 +144,7 @@ class Sidekick:
             if tool:
                 safety = EXECUTOR_TOOL_SAFETY.get(tool.tool_name)
                 if safety == ToolSafety.IRREVERSIBLE or (
-                    safety == ToolSafety.SANDBOXED_COMPUTE and current.requires_side_effects
+                    safety == ToolSafety.SANDBOXED_COMPUTE and next_task.requires_side_effects
                 ):
                     return "evaluator"
 
@@ -141,8 +157,8 @@ class Sidekick:
             return "clarifier"
 
         # Success → proceed to next task
-        if state.current_subtask_index < len(state.subtasks):
-            return state.subtasks[state.current_subtask_index].assigned_to
+        if state.next_subtask_index < len(state.subtasks):
+            return state.subtasks[state.next_subtask_index].assigned_to
 
         return "END"
 
@@ -164,12 +180,12 @@ class Sidekick:
         graph_builder.add_edge(START, "clarifier")
         graph_builder.add_conditional_edges(
             "clarifier",
-            self.route_based_on_clarifition,
+            self.clarifier_router,
             {"END": END, "planner": "planner"}
         )
         graph_builder.add_conditional_edges(
             "planner",
-            self.route_based_on_planner_subtasks,
+            self.planner_router,
             {
                 "researcher": "researcher",
                 "executor": "executor",
@@ -182,6 +198,18 @@ class Sidekick:
             self.researcher_router,
             {
                 "researcher_tools": "researcher_tools",
+                "planner": "planner",
+                "researcher": "researcher",
+                "executor": "executor",
+                "summarizer": "summarizer",
+                "evaluator": "evaluator"
+            }
+        )
+        graph_builder.add_conditional_edges(
+            "summarizer",
+            self.summarizer_router,
+            {
+                "clarifier": "clarifier",
                 "planner": "planner",
                 "researcher": "researcher",
                 "executor": "executor",
@@ -216,10 +244,6 @@ class Sidekick:
         )
         graph_builder.add_edge("researcher_tools", "researcher")
         graph_builder.add_edge("executor_tools", "executor")
-        # graph_builder.add_conditional_edges("worker", self.worker_router, {"tools": "tools", "evaluator": "evaluator"})
-        # graph_builder.add_edge("tools", "worker")
-        # graph_builder.add_conditional_edges("evaluator", self.route_based_on_evaluation, {"worker": "worker", "END": END})
-        # graph_builder.add_edge(START, "worker")
 
         # Compile the graph
         self.graph = graph_builder.compile(checkpointer=self.memory)
@@ -239,7 +263,6 @@ class Sidekick:
         result = await self.graph.ainvoke(initial_state, config=config)
         user = {"role": "user", "content":  message[0].content}
         reply = {"role": "assistant", "content": result["messages"][-1].content}
-        # feedback = {"role": "assistant", "content": result["messages"][-1].content}
         return history + [user, reply], result.get("user_input_needed", False)
 
     async def cleanup(self):

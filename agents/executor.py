@@ -10,7 +10,7 @@ def executor_agent(
     llm_with_tools: Runnable[LanguageModelInput, BaseMessage],
     state: State
 ) -> dict:
-    current = state.subtasks[state.current_subtask_index]
+    current = state.subtasks[state.next_subtask_index]
 
     system_msg = f"""
 Role:
@@ -38,21 +38,16 @@ Results (from previous agents):
 {chr(10).join(f"- {r}" for r in state.subtask_results)}
 """
 
-    last_message = state.messages[-1]
-
-    if isinstance(last_message, ToolMessage):
-        return {
-            "subtask_results": state.subtask_results + [last_message.content],
-            "messages": [
-                AIMessage(content=f"Execution completed for task: {current.task}")
-            ],
-            "current_subtask_index": state.current_subtask_index + 1
-        }
-
-    llm_response = llm_with_tools.invoke([
+    messages = [
         SystemMessage(content=system_msg),
         HumanMessage(content=human_msg)
-    ])
+    ]
+
+    for msg in state.messages:
+        if isinstance(msg, (AIMessage, ToolMessage)):
+            messages.append(msg)
+
+    llm_response = llm_with_tools.invoke(messages)
 
     if llm_response.tool_calls:
         return {
@@ -62,5 +57,5 @@ Results (from previous agents):
     return {
         "subtask_results": state.subtask_results + [llm_response.content],
         "messages": [AIMessage(content=f"Execution completed for task: {current.task}")],
-        "current_subtask_index": state.current_subtask_index + 1,
+        "next_subtask_index": state.next_subtask_index + 1,
     }

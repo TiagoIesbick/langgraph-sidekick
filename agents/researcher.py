@@ -15,10 +15,10 @@ def researcher_agent(
     if not state.subtasks:
         raise RuntimeError("Researcher invoked with no subtasks")
 
-    if state.current_subtask_index >= len(state.subtasks):
+    if state.next_subtask_index >= len(state.subtasks):
         raise RuntimeError("Researcher invoked with invalid task index")
 
-    current = state.subtasks[state.current_subtask_index]
+    current = state.subtasks[state.next_subtask_index]
 
     if current.assigned_to != "researcher":
         raise RuntimeError(
@@ -36,30 +36,33 @@ Task:
 - Use your tools to fulfill the user's request.
 
 Rules:
-- From the tools results, produce a concise summary of the results.
-- Capture the main points.
-- This will be consumed by someone synthesizing a report, so its vital you capture the essence and ignore any fluff.
-- Do not include any additional commentary other than the summary itself.
+- Use tools as needed.
+- When you are done, produce a concise summary.
+- Do NOT call tools after your final summary.
 - The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
 """
 
-    human_msg = f"Task:\n{current.task}"
+    human_msg = f"""
+Current task:
+{current.task}
+"""
 
-    last_message = state.messages[-1]
+    if state.subtask_results:
+        human_msg += f"""
+Results (from previous agents):
+{chr(10).join(f"- {r}" for r in state.subtask_results)}
+"""
 
-    if isinstance(last_message, ToolMessage):
-        return {
-            "subtask_results": state.subtask_results + [last_message.content],
-            "messages": [
-                AIMessage(content=f"Research completed for task: {current.task}")
-            ],
-            "current_subtask_index": state.current_subtask_index + 1
-        }
-
-    llm_response = llm_with_tools.invoke([
+    messages = [
         SystemMessage(content=system_msg),
         HumanMessage(content=human_msg)
-    ])
+    ]
+
+    for msg in state.messages:
+        if isinstance(msg, (AIMessage, ToolMessage)):
+            messages.append(msg)
+
+    llm_response = llm_with_tools.invoke(messages)
 
     print('[researcher]:', llm_response)
 
@@ -71,5 +74,5 @@ Rules:
     return {
         "subtask_results": state.subtask_results + [llm_response.content],
         "messages": [AIMessage(content=f"Research completed for task: {current.task}")],
-        "current_subtask_index": state.current_subtask_index + 1
+        "next_subtask_index": state.next_subtask_index + 1
     }

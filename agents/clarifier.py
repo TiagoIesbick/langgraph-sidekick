@@ -21,17 +21,6 @@ Task:
 - If unclear, ask a clarifying question.
 - If clear, acknowledge the request clearly and do NOT ask any question.
 
-Output Requirements:
-- You MUST output ONLY JSON.
-- Structure your output EXACTLY like this:
-
-{{
-  "state_diff": {{
-      "messages": [ {{ "type": "assistant", "content": "..." }} ],
-      "user_input_needed": true or false
-  }}
-}}
-
 Rules:
 - "user_input_needed" MUST be:
     - true  → if you asked a clarifying question

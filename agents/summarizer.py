@@ -7,7 +7,7 @@ def summarizer_agent(llm, state: State) -> dict:
 
     print(f"[summarizer_state]: {state}")
 
-    current = state.subtasks[state.current_subtask_index]
+    current = state.subtasks[state.next_subtask_index]
 
     system_msg = f"""
 Role:
@@ -34,5 +34,7 @@ Rules:
 
     print(f"[summarizer_response]: {llm_response}")
     return {
-        "messages": [dict_to_aimessage(llm_response)]
+        "subtask_results": state.subtask_results + [llm_response.content],
+        "messages": [dict_to_aimessage(llm_response)],
+        "next_subtask_index": state.next_subtask_index + 1
     }

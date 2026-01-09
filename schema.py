@@ -35,7 +35,7 @@ class State(BaseModel):
     user_input_needed: bool = False
     plan: Optional[str] = None
     subtasks: Optional[list[Subtask]] = None
-    current_subtask_index: int = 0
+    next_subtask_index: int = 0
     subtask_results: list[str] = Field(default_factory=list)
     # research_context: Optional[str] = None
     # execution_results: Optional[str] = None
