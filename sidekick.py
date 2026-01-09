@@ -3,7 +3,6 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, BaseMessage
-from typing import Any
 from tools.file_code import file_code_tools
 from tools.navigation import playwright_tools
 from tools.search import search_tools
@@ -105,7 +104,7 @@ class Sidekick:
         # 5. Otherwise keep researching
         return "researcher"
 
-    def executor_router(state: State) -> str:
+    def executor_router(self, state: State) -> str:
         print("[executor_router] index:", state.current_subtask_index)
 
         # 1. No plan yet
@@ -137,11 +136,15 @@ class Sidekick:
 
         return "executor"
 
-    def route_based_on_evaluation(self, state: State) -> str:
-        if state["success_criteria_met"] or state["user_input_needed"]:
-            return "END"
-        else:
-            return "worker"
+    def evaluator_router(self, state: State) -> str:
+        if not state.success_criteria_met:
+            return "clarifier"
+
+        # Success → proceed to next task
+        if state.current_subtask_index < len(state.subtasks):
+            return state.subtasks[state.current_subtask_index].assigned_to
+
+        return "END"
 
     async def build_graph(self):
         # Set up Graph Builder with State
@@ -171,7 +174,7 @@ class Sidekick:
                 "researcher": "researcher",
                 "executor": "executor",
                 "summarizer": "summarizer",
-                # "evaluator": "evaluator"
+                "evaluator": "evaluator"
             }
         )
         graph_builder.add_conditional_edges(
@@ -183,7 +186,7 @@ class Sidekick:
                 "researcher": "researcher",
                 "executor": "executor",
                 "summarizer": "summarizer",
-                # "evaluator": "evaluator"
+                "evaluator": "evaluator"
             }
         )
         graph_builder.add_conditional_edges(
@@ -195,7 +198,20 @@ class Sidekick:
                 "researcher": "researcher",
                 "executor": "executor",
                 "summarizer": "summarizer",
-                # "evaluator": "evaluator"
+                "evaluator": "evaluator"
+            }
+        )
+        graph_builder.add_conditional_edges(
+            "evaluator",
+            self.evaluator_router,
+            {
+                "clarifier": "clarifier",
+                "planner": "planner",
+                "researcher": "researcher",
+                "executor": "executor",
+                "summarizer": "summarizer",
+                "evaluator": "evaluator",
+                "END": END
             }
         )
         graph_builder.add_edge("researcher_tools", "researcher")

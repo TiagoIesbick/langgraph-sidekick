@@ -11,7 +11,7 @@ def summarizer_agent(llm, state: State) -> dict:
 
     system_msg = f"""
 Role:
-You are the Summarizer Agent.
+You are the SUMMARIZER agent in a LangGraph-based multi-agent system.
 
 Task:
 - From the previous agents results, synthetize a report.

@@ -10,7 +10,7 @@ def executor_agent(
     llm_with_tools: Runnable[LanguageModelInput, BaseMessage],
     state: State
 ) -> dict:
-    current = state.subtasks[state.current_task_index]
+    current = state.subtasks[state.current_subtask_index]
 
     system_msg = f"""
 Role:
@@ -27,7 +27,16 @@ Rules:
 - Do not ask for confirmation.
 """
 
-    human_msg = f"Task:\n{current.task}"
+    human_msg = f"""
+Current task:
+{current.task}
+"""
+
+    if state.subtask_results:
+        human_msg += f"""
+Results (from previous agents):
+{chr(10).join(f"- {r}" for r in state.subtask_results)}
+"""
 
     last_message = state.messages[-1]
 
@@ -53,5 +62,5 @@ Rules:
     return {
         "subtask_results": state.subtask_results + [llm_response.content],
         "messages": [AIMessage(content=f"Execution completed for task: {current.task}")],
-        "current_task_index": state.current_task_index + 1,
+        "current_subtask_index": state.current_subtask_index + 1,
     }
