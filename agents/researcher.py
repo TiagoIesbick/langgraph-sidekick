@@ -27,7 +27,7 @@ def researcher_agent(
 
     system_msg = f"""
 Role:
-You are the Researcher Agent.
+You are the RESEARCHER agent in a LangGraph-based multi-agent system.
 
 Tools:
 {CAPABILITIES_MANIFEST.get("researcher").get("tools")}

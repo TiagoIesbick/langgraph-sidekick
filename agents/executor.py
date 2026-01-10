@@ -1,6 +1,6 @@
 from schema import State
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, ToolMessage
-from utils.utils import CAPABILITIES_MANIFEST
+from utils.utils import CAPABILITIES_MANIFEST, EXECUTOR_TOOL_SAFETY, ToolSafety, infer_tool_name
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import BaseMessage
@@ -14,17 +14,16 @@ def executor_agent(
 
     system_msg = f"""
 Role:
-You are the Executor Agent.
+You are the EXECUTOR Agent in a LangGraph-based multi-agent system.
 
 Tools:
 {CAPABILITIES_MANIFEST.get("executor").get("tools")}
 
 Task:
-- Use your tools to fulfill the user's request.
-
-Rules:
-- Execute the user's request exactly as written.
-- Do not ask for confirmation.
+- Execute the task exactly as written.
+- If the task requires irreversible side effects:
+  - Request approval instead of executing.
+- Only execute irreversible tools if approval is granted.
 """
 
     human_msg = f"""
@@ -50,6 +49,19 @@ Results (from previous agents):
     llm_response = llm_with_tools.invoke(messages)
 
     if llm_response.tool_calls:
+        tool = infer_tool_name(llm_response)
+        safety = EXECUTOR_TOOL_SAFETY.get(tool.tool_name)
+
+        if safety == ToolSafety.IRREVERSIBLE and not state.side_effects_approved:
+            return {
+                "side_effects_requested": True,
+                "messages": [
+                    AIMessage(
+                        content=f"Requesting approval to perform irreversible action: {tool.tool_name}"
+                    )
+                ]
+            }
+
         return {
             "messages": [llm_response],
         }
@@ -58,4 +70,6 @@ Results (from previous agents):
         "subtask_results": state.subtask_results + [llm_response.content],
         "messages": [AIMessage(content=f"Execution completed for task: {current.task}")],
         "next_subtask_index": state.next_subtask_index + 1,
+        "side_effects_requested": False,
+        "side_effects_approved": False
     }

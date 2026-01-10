@@ -18,7 +18,8 @@ Role:
 You are the EVALUATOR agent in a LangGraph-based multi-agent system.
 
 Goal:
-Decide whether the SUCCESS CRITERIA has been met based on the the task results.
+1. Decide whether the SUCCESS CRITERIA has been met based on the the task results.
+2. Decide whether requested side effects are allowed
 
 Decision Rules (STRICT):
 - success_criteria_met:
@@ -49,6 +50,9 @@ Success criteria:
 
 Task results:
 {chr(10).join(f"- {r}" for r in state.subtask_results)}
+
+Side effects requested:
+{state.side_effects_requested}
 """
 
     if state.feedback_on_work:
@@ -60,9 +64,14 @@ Task results:
         HumanMessage(content=human_msg)
     ])
 
-    return {
+    updates = {
         "messages": [dict_to_aimessage(llm_response.feedback)],
         "feedback_on_work": llm_response.feedback,
         "success_criteria_met": llm_response.success_criteria_met,
         "user_input_needed": llm_response.user_input_needed
     }
+
+    if state.side_effects_requested:
+        updates["side_effects_approved"] = bool(llm_response.side_effects_approved)
+
+    return updates

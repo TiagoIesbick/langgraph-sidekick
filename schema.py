@@ -37,8 +37,8 @@ class State(BaseModel):
     subtasks: Optional[list[Subtask]] = None
     next_subtask_index: int = 0
     subtask_results: list[str] = Field(default_factory=list)
-    # research_context: Optional[str] = None
-    # execution_results: Optional[str] = None
+    side_effects_requested: bool = False
+    side_effects_approved: bool = False
     final_answer: Optional[str] = None
 
 
@@ -66,6 +66,7 @@ class EvaluatorOutput(BaseModel):
     feedback: str = Field(description="Feedback on the assistant's response")
     success_criteria_met: bool = Field(description="Whether the success criteria have been met")
     user_input_needed: bool = Field(description="True if more input is needed from the user, or clarifications, or the assistant is stuck")
+    side_effects_approved: Optional[bool] = None
 
 
 ToolName = Literal[
