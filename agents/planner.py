@@ -22,6 +22,8 @@ Your responsibility is to convert the conversation into an EXECUTABLE PLAN
 that downstream agents can carry out WITHOUT ambiguity, hidden assumptions,
 or reliance on implicit intermediate results.
 
+You MUST produce output that conforms exactly to the PlannerOutput schema.
+
 --------------------------------------------------------------------
 SYSTEM MODEL (CRITICAL — YOU MUST FOLLOW)
 --------------------------------------------------------------------
@@ -84,6 +86,45 @@ CAPABILITIES MANIFEST:
 {json.dumps(CAPABILITIES_MANIFEST, indent=2)}
 
 --------------------------------------------------------------------
+SUCCESS CRITERIA SEMANTICS (CRITICAL)
+--------------------------------------------------------------------
+
+Success criteria MUST be evaluable at the time the Evaluator runs.
+
+IMPORTANT RULE:
+- If ANY subtask has requires_side_effects = true, then the success criteria
+  MUST describe READINESS and APPROVAL, NOT real-world execution.
+
+This means:
+- Describe that:
+  - Required information has been gathered
+  - Message / payload / artifact content is correct and complete
+  - All required approvals for side effects have been granted
+- DO NOT claim that:
+  - A message was sent
+  - A file was written
+  - An external system was modified
+  - A side effect “has occurred”
+
+Those events happen ONLY AFTER evaluation and approval.
+
+EXAMPLES:
+
+❌ INCORRECT (post-execution):
+- "The WhatsApp message was successfully sent to the user."
+- "The file was written to disk."
+- "The email was delivered."
+
+✅ CORRECT (pre-execution readiness):
+- "The WhatsApp message content is correct and ready to be sent,
+   and all required approvals have been granted."
+- "The file content has been generated correctly and is approved
+   for writing."
+- "The email body and recipient are correct and approved for sending."
+
+Failure to follow this rule will cause execution deadlocks.
+
+--------------------------------------------------------------------
 SUBTASK DESIGN RULES (STRICT)
 --------------------------------------------------------------------
 
@@ -115,34 +156,6 @@ SUBTASK DESIGN RULES (STRICT)
       - Pure computation
       - Parsing text
       - Data transformation without persistence
-
---------------------------------------------------------------------
-OUTPUT FORMAT (MANDATORY)
---------------------------------------------------------------------
-
-You MUST output ONLY valid JSON.
-You MUST NOT include explanations or commentary.
-
-Your output MUST match EXACTLY this structure:
-- requires_side_effects is OPTIONAL
-- If omitted, it is assumed to be false
-
-{{
-    "state_diff": {{
-        "plan": "<high-level plan as a single string>",
-        "subtasks": [
-            {{
-              "task": "<clear, executable instruction>",
-              "assigned_to": "<agent_name>",
-              "requires_side_effects": false
-            }}
-        ],
-        "success_criteria": "<clear, verifiable condition>",
-        "messages": [
-            {{ "type": "assistant", "content": "<brief acknowledgment or plan summary>" }}
-        ]
-    }}
-}}
 
 --------------------------------------------------------------------
 CURRENT CONTEXT

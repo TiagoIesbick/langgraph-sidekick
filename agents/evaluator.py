@@ -61,6 +61,11 @@ Rules:
   - If success_criteria_met is FALSE, explain exactly what is missing or wrong.
   - If user_input_needed is TRUE, explicitly state what the user must provide.
 
+IMPORTANT:
+If side effects are requested but not yet approved or executed,
+you must evaluate success criteria ONLY up to readiness and correctness.
+Do NOT expect confirmation of real-world execution.
+
 ────────────────────────────────────
 GLOBAL CONSTRAINTS
 ────────────────────────────────────
