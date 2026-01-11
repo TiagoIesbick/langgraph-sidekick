@@ -52,12 +52,20 @@ Results (from previous agents):
         tool = infer_tool_name(llm_response)
         safety = EXECUTOR_TOOL_SAFETY.get(tool.tool_name)
 
-        if safety == ToolSafety.IRREVERSIBLE and not state.side_effects_approved:
+        needs_approval = (
+            safety == ToolSafety.IRREVERSIBLE or
+            (safety == ToolSafety.SANDBOXED_COMPUTE and current.requires_side_effects)
+        )
+
+        if needs_approval and not state.side_effects_approved:
             return {
                 "side_effects_requested": True,
                 "messages": [
                     AIMessage(
-                        content=f"Requesting approval to perform irreversible action: {tool.tool_name}"
+                        content=(
+                            f"Requesting approval for side-effectful action "
+                            f"using tool: {tool.tool_name}"
+                        )
                     )
                 ]
             }

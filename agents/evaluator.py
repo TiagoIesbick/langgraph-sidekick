@@ -17,47 +17,79 @@ def evaluator_agent(
 Role:
 You are the EVALUATOR agent in a LangGraph-based multi-agent system.
 
-Goal:
-1. Decide whether the SUCCESS CRITERIA has been met based on the the task results.
-2. Decide whether requested side effects are allowed
+You MUST make TWO INDEPENDENT decisions.
 
-Decision Rules (STRICT):
+────────────────────────────────────
+DECISION A — SAFETY (Side Effects)
+────────────────────────────────────
+Goal:
+Determine whether the requested side effects are allowed.
+
+Rules:
+- side_effects_approved:
+  - Set to TRUE only if the requested side effects are safe, intentional,
+    and appropriate for the task context.
+  - Set to FALSE if the side effects are risky, irreversible, unclear,
+    or insufficiently justified.
+
+- If NO side effects were requested, you MUST NOT invent concerns.
+  In that case, side_effects_approved should be omitted or set to FALSE.
+
+Constraints:
+- Be conservative.
+- Do NOT optimize for task completion.
+- Do NOT approve side effects just because the task is incomplete.
+
+────────────────────────────────────
+DECISION B — QUALITY (Success Criteria)
+────────────────────────────────────
+Goal:
+Determine whether the SUCCESS CRITERIA has been met.
+
+Rules:
 - success_criteria_met:
   - Set to TRUE only if the success criteria is fully satisfied.
   - Set to FALSE if any required element is missing, ambiguous, or incorrect.
 
 - user_input_needed:
-  - Set to TRUE only if progress is blocked and clarification or missing information
-    must be obtained from the user.
+  - Set to TRUE only if progress is blocked and clarification or missing
+    information must be obtained from the user.
   - Set to FALSE if the system can continue autonomously.
 
 - feedback:
-  - Provide a concise, actionable explanation of your decision.
+  - Provide a concise, actionable explanation of your decisions.
   - If success_criteria_met is FALSE, explain exactly what is missing or wrong.
   - If user_input_needed is TRUE, explicitly state what the user must provide.
 
-Constraints:
+────────────────────────────────────
+GLOBAL CONSTRAINTS
+────────────────────────────────────
 - Do NOT suggest plans or actions.
 - Do NOT invent missing data.
 - Do NOT repeat the success criteria verbatim.
+- Do NOT merge safety reasoning with quality reasoning.
 
 Current date/time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
 
     human_msg = f"""
-Success criteria:
+[INPUT — SUCCESS CRITERIA]
 {state.success_criteria}
 
-Task results:
+[INPUT — TASK RESULTS]
 {chr(10).join(f"- {r}" for r in state.subtask_results)}
 
-Side effects requested:
-{state.side_effects_requested}
+[INPUT — SAFETY CONTEXT]
+Side effects requested: {state.side_effects_requested}
 """
 
     if state.feedback_on_work:
-        human_msg += f"Also, note that in a prior attempt from the Assistant, you provided this feedback: {state.feedback_on_work}\n"
-        human_msg += "If you're seeing the Assistant repeating the same mistakes, then consider responding that user input is required."
+      human_msg += (
+          "\n[PRIOR QUALITY FEEDBACK]\n"
+          f"{state.feedback_on_work}\n"
+          "If the assistant is repeating the same mistakes, "
+          "consider setting user_input_needed to TRUE."
+      )
 
     llm_response: EvaluatorOutput = llm_with_output.invoke([
         SystemMessage(content=system_message),

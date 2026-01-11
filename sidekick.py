@@ -14,7 +14,7 @@ from agents.summarizer import summarizer_agent
 from agents.executor import executor_agent
 from agents.evaluator import evaluator_agent
 from db.sql_memory import setup_memory
-from utils.utils import infer_tool_name, EXECUTOR_TOOL_SAFETY, ToolSafety
+from utils.utils import infer_tool_name
 import uuid
 import asyncio
 
@@ -137,18 +137,11 @@ class Sidekick:
         if next_task.assigned_to != "executor":
             return next_task.assigned_to
 
-        # 4. Tool call in progress
-        if state.messages:
-            last = state.messages[-1]
-            tool = infer_tool_name(last)
-            if tool:
-                safety = EXECUTOR_TOOL_SAFETY.get(tool.tool_name)
-                if safety == ToolSafety.IRREVERSIBLE or (
-                    safety == ToolSafety.SANDBOXED_COMPUTE and next_task.requires_side_effects
-                ):
-                    return "evaluator"
+        if state.side_effects_requested and not state.side_effects_approved:
+            return "evaluator"
 
-                return "executor_tools"
+        if state.messages and infer_tool_name(state.messages[-1]):
+            return "executor_tools"
 
         return "executor"
 
