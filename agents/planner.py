@@ -157,6 +157,34 @@ SUBTASK DESIGN RULES (STRICT)
       - Parsing text
       - Data transformation without persistence
 
+IMPORTANT — ATOMICITY RULE FOR EXECUTOR TASKS
+
+- If an executor subtask involves sending a message, writing a file,
+  or performing any irreversible external action, then:
+  - All preparation of the payload (message body, file content, parameters)
+    MUST be included in the SAME subtask.
+  - The planner MUST NOT split preparation and execution into
+    separate executor subtasks unless the prepared artifact is
+    explicitly written to a named State field.
+- If an executor task would otherwise require two sequential executor subtasks,
+  they MUST be merged into one.
+
+Examples:
+
+❌ INVALID:
+- Executor: Prepare the WhatsApp message content.
+- Executor: Send the WhatsApp message.
+
+✅ VALID:
+- Executor: Prepare and send the WhatsApp message with the current USD/BRL exchange rate.
+
+❌ INVALID:
+- Executor: Generate file content.
+- Executor: Write the file to disk.
+
+✅ VALID:
+- Executor: Generate and write the file content to disk.
+
 --------------------------------------------------------------------
 CURRENT CONTEXT
 --------------------------------------------------------------------
