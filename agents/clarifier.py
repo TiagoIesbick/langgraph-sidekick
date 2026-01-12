@@ -13,39 +13,126 @@ def clarifier_agent(
 ) -> dict:
 
     system_message = f"""
-Role:
-You are a Clarification Agent.
+You are the CLARIFIER agent in a LangGraph-based multi-agent system.
 
-Task:
-- Evaluate whether the user's request is clear based on the FULL conversation history.
-- If unclear, ask a clarifying question.
-- If clear, acknowledge the request clearly and do NOT ask any question.
+WHEN YOU ARE CALLED:
+You are invoked in one of two situations:
 
-Rules:
-- "user_input_needed" MUST be:
-    - true  → if you asked a clarifying question
-    - false → if the user's request is already fully clear
-- You may ONLY modify:
-    - messages (append ONE assistant message)
-    - user_input_needed (true/false)
-- Do NOT modify, include, or reference any other fields.
+1) The user has just submitted a request, and the system must determine
+   whether the request is sufficiently clear to proceed.
+
+2) A previous Evaluator agent has DENIED an otherwise sensible task produced
+   by the Executor agent. In this case:
+   - The denial reason is stored in the state field: feedback_on_work
+   - side_effects_approved is false
+   - The system requires user clarification, correction, or confirmation
+
+YOUR GOAL:
+Determine whether the system needs additional input from the USER
+in order to proceed safely and correctly.
+
+WHAT YOU MUST DO:
+- If additional user input IS REQUIRED:
+    - Ask exactly ONE clear, specific question directed to the user
+    - Set user_input_needed = true
+- If additional user input IS NOT REQUIRED:
+    - Do NOT ask any question
+    - Do NOT emit any assistant message
+    - Set user_input_needed = false
+
+IMPORTANT CONSTRAINTS:
+- You must consider the FULL conversation history.
+- You must consider evaluator feedback if present.
 - Do NOT repeat previous assistant questions.
-- Do NOT ask for clarification if the answer is already present in prior user turns.
-- The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
+- Do NOT ask for information the user already provided.
+- Do NOT acknowledge, summarize, or restate the request unless a question
+  is strictly required.
+
+SIDE EFFECT CONSENT EXTRACTION:
+If the user has explicitly granted or refused permission for a previously
+blocked irreversible action:
+
+- Explicit approval (e.g. "yes, go ahead", "I approve"):
+    → set user_side_effects_confirmed = true
+- Explicit refusal or revocation:
+    → set user_side_effects_confirmed = false
+- If the user has not addressed side effects:
+    → omit user_side_effects_confirmed entirely
+
+Consent rules:
+- Do NOT decide whether side effects are safe.
+- Do NOT ask for permission unless clarification is required.
+- Only extract consent that the user has clearly stated.
+- If consent is extracted, do NOT ask follow-up questions.
+
+CRITICAL OUTPUT RULE (MUST FOLLOW EXACTLY):
+
+- If you set user_input_needed = true:
+    - You MUST output exactly ONE assistant message in `messages`
+    - That message MUST be a direct question to the user
+    - Do NOT leave `messages` empty or null
+
+- If you set user_input_needed = false:
+    - You MUST NOT output any messages
+    - `messages` MUST be omitted or null
+
+Any output that violates these rules is INVALID.
+
+SPECIAL RULE — EVALUATOR DENIAL:
+
+If evaluator feedback is present (feedback_on_work is non-empty),
+you MUST assume that user input is REQUIRED.
+
+Evaluator feedback should be considered present ONLY if it refers
+to the immediately preceding evaluator decision for the current task.
+
+Evaluator denial ALWAYS takes precedence over request clarity.
+Even if the original request is clear, you MUST ask a question
+when evaluator feedback is present.
+
+In this case:
+- You MUST ask exactly ONE question to the user
+- The question MUST directly address the evaluator's concern
+- user_input_needed MUST be set to true
+
+When asking a question due to evaluator denial:
+- Reference the evaluator's feedback implicitly or explicitly
+- Ask the user how they want to proceed, clarify, or confirm
+- Do NOT restate system policies or internal rules
+
+The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
 """
-    last_user_input = state.messages[-1].content if state.messages else "(no messages)"
+
+    last_user_message = next(
+        (m for m in reversed(state.messages) if isinstance(m, HumanMessage)),
+        None,
+    )
+
+    last_user_input = (
+        last_user_message.content if last_user_message else "(no user message)"
+    )
 
     human_message = f"""
-Here is the full conversation so far:
+Conversation history:
 {format_conversation(state.messages)}
 
-The final user message is:
+Last USER message:
 "{last_user_input}"
 
-Your job:
-- Decide whether the user's request is clear GIVEN THE ENTIRE CONVERSATION.
-- If it is clear → set "user_input_needed": false and acknowledge.
-- If it is unclear → ask ONE clarifying question and set "user_input_needed": true.
+Evaluator feedback (if any):
+{state.feedback_on_work or "(none)"}
+
+Decision task:
+- Decide whether additional input from the USER is required to proceed.
+- If required:
+    - Ask exactly ONE clarifying question.
+    - Set user_input_needed = true.
+- If not required:
+    - Set user_input_needed = false.
+    - Do NOT ask a question and do NOT emit messages.
+- If the user's last message explicitly grants or refuses permission
+  for a previously denied irreversible action, extract that consent
+  into user_side_effects_confirmed.
 """
 
     llm_response: ClarifierOutput  = llm_with_output.invoke([
@@ -54,12 +141,18 @@ Your job:
     ])
 
     diff: ClarifierStateDiff = llm_response.state_diff
+    
+    print('[diff]:', diff)
 
     updates: dict = {}
 
     if diff.messages:
         updates["messages"] = [dict_to_aimessage(m) for m in diff.messages]
 
-    updates["user_input_needed"] = bool(diff.user_input_needed)
+    if diff.user_input_needed is not None:
+        updates["user_input_needed"] = bool(diff.user_input_needed)
+
+    if diff.user_side_effects_confirmed is not None:
+        updates["user_side_effects_confirmed"] = bool(diff.user_side_effects_confirmed)
 
     return updates

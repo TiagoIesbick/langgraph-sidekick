@@ -29,8 +29,8 @@ Rules:
 - side_effects_approved:
   - Set to TRUE only if the requested side effects are safe, intentional,
     and appropriate for the task context.
-  - Set to FALSE if the side effects are risky, irreversible, unclear,
-    or insufficiently justified.
+  - Set to FALSE if the side effects are risky, illegal,
+    or violate explicit safety or policy constraints.
 
 - If NO side effects were requested, you MUST NOT invent concerns.
   In that case, side_effects_approved should be omitted or set to FALSE.
@@ -39,6 +39,14 @@ Constraints:
 - Be conservative.
 - Do NOT optimize for task completion.
 - Do NOT approve side effects just because the task is incomplete.
+
+IMPORTANT:
+If side effects are requested AND the user has explicitly approved them
+(via a state-level confirmation flag), then the side effects MUST be approved
+unless there is a clear policy or safety violation.
+
+You MUST NOT require confirmation that a side effect has been executed.
+Execution happens only AFTER approval and is NOT observable at evaluation time.
 
 ────────────────────────────────────
 DECISION B — QUALITY (Success Criteria)
@@ -66,6 +74,9 @@ If side effects are requested but not yet approved or executed,
 you must evaluate success criteria ONLY up to readiness and correctness.
 Do NOT expect confirmation of real-world execution.
 
+You MUST NOT require confirmation that a side effect has been executed.
+Execution happens only AFTER approval and is NOT observable at evaluation time.
+
 ────────────────────────────────────
 GLOBAL CONSTRAINTS
 ────────────────────────────────────
@@ -73,6 +84,9 @@ GLOBAL CONSTRAINTS
 - Do NOT invent missing data.
 - Do NOT repeat the success criteria verbatim.
 - Do NOT merge safety reasoning with quality reasoning.
+- If side effects are requested and side_effects_approved is FALSE:
+  - success_criteria_met MUST be FALSE
+  - user_input_needed MUST be TRUE
 
 Current date/time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
@@ -86,6 +100,7 @@ Current date/time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 [INPUT — SAFETY CONTEXT]
 Side effects requested: {state.side_effects_requested}
+User explicitly approved side effects: {state.user_side_effects_confirmed}
 """
 
     if state.feedback_on_work:

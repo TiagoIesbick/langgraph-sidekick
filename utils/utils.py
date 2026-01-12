@@ -61,7 +61,7 @@ def dict_to_aimessage(d: dict[str, Any]) -> AIMessage:
     return AIMessage(content=content)
 
 def format_conversation(messages: list[Any]) -> str:
-        conversation = "Conversation history:\n\n"
+        conversation = ""
         for message in messages:
             if isinstance(message, HumanMessage):
                 conversation += f"User: {message.content}\n"

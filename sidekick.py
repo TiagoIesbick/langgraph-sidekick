@@ -1,5 +1,6 @@
 from schema import PlannerOutput, State, EvaluatorOutput, ClarifierOutput
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import Interrupt
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, BaseMessage
@@ -52,6 +53,9 @@ class Sidekick:
     def clarifier(self, state: State) -> State:
         return clarifier_agent(self.clarifier_llm_with_output, state)
 
+    def wait_for_user(self, state: State):
+        return Interrupt("waiting_for_user")
+
     def planner(self, state: State) -> State:
         return planner_agent(self.planner_llm_with_output, state)
 
@@ -68,7 +72,11 @@ class Sidekick:
         return evaluator_agent(self.evaluator_llm_with_output, state)
 
     def clarifier_router(self, state: State) -> str:
-        return "END" if state.user_input_needed else "planner"
+        if state.user_input_needed:
+            return "wait"
+        if state.side_effects_requested and state.user_side_effects_confirmed is not None:
+            return "evaluator"
+        return "planner"
 
     def planner_router(self, state: State) -> str:
         if not state.subtasks:
@@ -146,6 +154,9 @@ class Sidekick:
         return "executor"
 
     def evaluator_router(self, state: State) -> str:
+        if state.side_effects_requested and not state.side_effects_approved:
+            return "clarifier"
+
         if not state.success_criteria_met:
             return "clarifier"
 
@@ -161,6 +172,7 @@ class Sidekick:
 
         # Add nodes
         graph_builder.add_node("clarifier", self.clarifier)
+        graph_builder.add_node("wait_for_user", self.wait_for_user)
         graph_builder.add_node("planner", self.planner)
         graph_builder.add_node("researcher", self.researcher)
         graph_builder.add_node("summarizer", self.summarizer)
@@ -174,7 +186,11 @@ class Sidekick:
         graph_builder.add_conditional_edges(
             "clarifier",
             self.clarifier_router,
-            {"END": END, "planner": "planner"}
+            {
+                "wait": "wait_for_user",
+                "planner": "planner",
+                "evaluator": "evaluator"
+            }
         )
         graph_builder.add_conditional_edges(
             "planner",
@@ -241,22 +257,32 @@ class Sidekick:
         # Compile the graph
         self.graph = graph_builder.compile(checkpointer=self.memory)
 
-    async def run_superstep(self, message, success_criteria, history):
+    async def run_superstep(self, message, history):
         config = {"configurable": {"thread_id": self.sidekick_id}}
 
         if isinstance(message, str):
-            message = [HumanMessage(content=message)]
-        elif isinstance(message, BaseMessage):
-            message = [message]
+            message = HumanMessage(content=message)
 
-        initial_state = State(
-            messages=message
+        # Invoke graph with ONLY the new message
+        result = await self.graph.ainvoke(
+            {"messages": [message]},
+            config=config,
         )
 
-        result = await self.graph.ainvoke(initial_state, config=config)
-        user = {"role": "user", "content":  message[0].content}
-        reply = {"role": "assistant", "content": result["messages"][-1].content}
-        return history + [user, reply], result.get("user_input_needed", False)
+        last_ai = next(
+            (m for m in reversed(result["messages"]) if m.type == "ai"),
+            None,
+        )
+
+        print(result["messages"])
+
+        if last_ai:
+            history = history + [(message.content, last_ai.content)]
+
+        # True if graph paused for user input or permission
+        user_input_needed = "__interrupt__" in result
+
+        return history, user_input_needed
 
     async def cleanup(self):
         if self.browser:

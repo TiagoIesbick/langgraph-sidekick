@@ -39,12 +39,14 @@ class State(BaseModel):
     subtask_results: list[str] = Field(default_factory=list)
     side_effects_requested: bool = False
     side_effects_approved: bool = False
+    user_side_effects_confirmed: bool = False
     final_answer: Optional[str] = None
 
 
 class ClarifierStateDiff(BaseModel):
     messages: Optional[list[dict[str, Any]]] = None
     user_input_needed: Optional[bool] = None
+    user_side_effects_confirmed: Optional[bool] = None
 
 
 class ClarifierOutput(BaseModel):
