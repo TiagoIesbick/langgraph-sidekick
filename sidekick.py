@@ -3,7 +3,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Interrupt
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, BaseMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from tools.file_code import file_code_tools
 from tools.navigation import playwright_tools
 from tools.search import search_tools
@@ -259,6 +259,9 @@ class Sidekick:
 
     async def run_superstep(self, message, history):
         config = {"configurable": {"thread_id": self.sidekick_id}}
+        
+        
+        print('[message]:', message)
 
         if isinstance(message, str):
             message = HumanMessage(content=message)
@@ -270,17 +273,23 @@ class Sidekick:
         )
 
         last_ai = next(
-            (m for m in reversed(result["messages"]) if m.type == "ai"),
+            (m for m in reversed(result["messages"]) if isinstance(m, AIMessage)),
             None,
         )
 
         print(result["messages"])
 
         if last_ai:
-            history = history + [(message.content, last_ai.content)]
+            print('[last_ai]:', last_ai)
+            history = history + [
+                {"role": "user", "content": message.content},
+                {"role": "assistant", "content": last_ai.content},
+            ]
 
         # True if graph paused for user input or permission
         user_input_needed = "__interrupt__" in result
+        
+        print('[history]:', history)
 
         return history, user_input_needed
 

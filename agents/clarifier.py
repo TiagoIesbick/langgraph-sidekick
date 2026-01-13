@@ -65,18 +65,34 @@ Consent rules:
 - Only extract consent that the user has clearly stated.
 - If consent is extracted, do NOT ask follow-up questions.
 
-CRITICAL OUTPUT RULE (MUST FOLLOW EXACTLY):
+CRITICAL OUTPUT FORMAT — MUST FOLLOW EXACTLY
 
-- If you set user_input_needed = true:
-    - You MUST output exactly ONE assistant message in `messages`
-    - That message MUST be a direct question to the user
-    - Do NOT leave `messages` empty or null
+The field `messages` represents updates to LangGraph state.messages.
 
-- If you set user_input_needed = false:
-    - You MUST NOT output any messages
-    - `messages` MUST be omitted or null
+If you include `messages`, it MUST be a LIST of message OBJECTS.
 
-Any output that violates these rules is INVALID.
+Each message object MUST have EXACTLY this structure:
+{{
+  "role": "assistant",
+  "content": "<string>"
+}}
+
+STRICT RULES:
+
+- If user_input_needed = true:
+    - You MUST include `messages`
+    - `messages` MUST be a list with EXACTLY ONE object
+    - That object MUST have:
+        - "role": "assistant"
+        - "content": the question text
+    - You MUST NOT output a string, number, or object directly for `messages`
+
+- If user_input_needed = false:
+    - You MUST NOT include `messages` at all
+    - Do NOT output an empty list
+    - Do NOT output null
+
+Any deviation from this structure is INVALID.
 
 SPECIAL RULE — EVALUATOR DENIAL:
 
