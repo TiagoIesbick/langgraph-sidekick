@@ -124,6 +124,6 @@ User explicitly approved side effects: {state.user_side_effects_confirmed}
     }
 
     if state.side_effects_requested:
-        updates["side_effects_approved"] = bool(llm_response.side_effects_approved)
+        updates["side_effects_approved"] = llm_response.side_effects_approved
 
     return updates

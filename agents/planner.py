@@ -218,7 +218,9 @@ Generate the plan, subtasks, and success criteria.
     updates: dict[str, Any] = {
         "plan": diff.plan,
         "subtasks": diff.subtasks,
-        "success_criteria": diff.success_criteria
+        "success_criteria": diff.success_criteria,
+        "next_subtask_index": 0,
+        "subtask_results": []
     }
 
     if diff.messages:

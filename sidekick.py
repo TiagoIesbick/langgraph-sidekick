@@ -157,8 +157,8 @@ class Sidekick:
         if state.side_effects_requested and not state.side_effects_approved:
             return "clarifier"
 
-        if not state.success_criteria_met:
-            return "clarifier"
+        if not state.success_criteria_met and not state.user_input_needed:
+            return "planner"
 
         # Success → proceed to next task
         if state.next_subtask_index < len(state.subtasks):
@@ -259,9 +259,6 @@ class Sidekick:
 
     async def run_superstep(self, message, history):
         config = {"configurable": {"thread_id": self.sidekick_id}}
-        
-        
-        print('[message]:', message)
 
         if isinstance(message, str):
             message = HumanMessage(content=message)
@@ -277,8 +274,6 @@ class Sidekick:
             None,
         )
 
-        print(result["messages"])
-
         if last_ai:
             print('[last_ai]:', last_ai)
             history = history + [
@@ -288,8 +283,6 @@ class Sidekick:
 
         # True if graph paused for user input or permission
         user_input_needed = "__interrupt__" in result
-        
-        print('[history]:', history)
 
         return history, user_input_needed
 
