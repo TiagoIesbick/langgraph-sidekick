@@ -49,8 +49,8 @@ IMPORTANT CONSTRAINTS:
   is strictly required.
 
 SIDE EFFECT CONSENT EXTRACTION:
-If the user has explicitly granted or refused permission for a previously
-blocked irreversible action:
+If evaluator feedback is present AND the user's last message explicitly grants or refuses
+permission for the previously blocked irreversible action:
 
 - Explicit approval (e.g. "yes, go ahead", "I approve"):
     → set user_side_effects_confirmed = true
@@ -58,12 +58,10 @@ blocked irreversible action:
     → set user_side_effects_confirmed = false
 - If the user has not addressed side effects:
     → omit user_side_effects_confirmed entirely
-
-Consent rules:
-- Do NOT decide whether side effects are safe.
-- Do NOT ask for permission unless clarification is required.
-- Only extract consent that the user has clearly stated.
-- If consent is extracted, do NOT ask follow-up questions.
+- If consent is extracted:
+    → Set user_input_needed = false.
+    → Do NOT ask a question.
+    → Include the extracted user_side_effects_confirmed.
 
 CRITICAL OUTPUT FORMAT — MUST FOLLOW EXACTLY
 
@@ -94,28 +92,6 @@ STRICT RULES:
 
 Any deviation from this structure is INVALID.
 
-SPECIAL RULE — EVALUATOR DENIAL:
-
-If evaluator feedback is present (feedback_on_work is non-empty),
-you MUST assume that user input is REQUIRED.
-
-Evaluator feedback should be considered present ONLY if it refers
-to the immediately preceding evaluator decision for the current task.
-
-Evaluator denial ALWAYS takes precedence over request clarity.
-Even if the original request is clear, you MUST ask a question
-when evaluator feedback is present.
-
-In this case:
-- You MUST ask exactly ONE question to the user
-- The question MUST directly address the evaluator's concern
-- user_input_needed MUST be set to true
-
-When asking a question due to evaluator denial:
-- Reference the evaluator's feedback implicitly or explicitly
-- Ask the user how they want to proceed, clarify, or confirm
-- Do NOT restate system policies or internal rules
-
 The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
 """
 
@@ -132,23 +108,18 @@ The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
 Conversation history:
 {format_conversation(state.messages)}
 
-Last USER message:
+Latest USER message:
 "{last_user_input}"
 
 Evaluator feedback (if any):
 {state.feedback_on_work or "(none)"}
 
-Decision task:
-- Decide whether additional input from the USER is required to proceed.
-- If required:
-    - Ask exactly ONE clarifying question.
-    - Set user_input_needed = true.
-- If not required:
-    - Set user_input_needed = false.
-    - Do NOT ask a question and do NOT emit messages.
-- If the user's last message explicitly grants or refuses permission
-  for a previously denied irreversible action, extract that consent
-  into user_side_effects_confirmed.
+Task:
+- Extract consent if evaluator feedback present.
+- Decide if user input needed (unclear request or unaddressed feedback).
+- If yes: Ask ONE question; user_input_needed=true.
+- If no (clear or consent extracted): user_input_needed=false; no messages.
+- Set user_side_effects_confirmed if extracted.
 """
 
     llm_response: ClarifierOutput  = llm_with_output.invoke([
@@ -157,7 +128,7 @@ Decision task:
     ])
 
     diff: ClarifierStateDiff = llm_response.state_diff
-    
+
     print('[diff]:', diff)
 
     updates: dict = {}
