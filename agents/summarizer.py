@@ -5,8 +5,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 def summarizer_agent(llm, state: State) -> dict:
 
-    print(f"[summarizer_state]: {state}")
-
     current = state.subtasks[state.next_subtask_index]
 
     system_msg = f"""

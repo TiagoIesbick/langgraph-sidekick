@@ -54,9 +54,20 @@ class ClarifierOutput(BaseModel):
 
 
 class PlannerStateDiff(BaseModel):
-    plan: str
+    plan: str = Field(description=(
+        "A concise, high-level description of the overall approach to fulfill "
+        "the user's request. This plan explains WHAT will be done and in WHAT "
+        "order at a conceptual level, but does NOT include executable steps, "
+        "tool usage, or assumptions about intermediate results. "
+        "The plan is for human readability and orchestration context only."
+    ))
     subtasks: list[Subtask]
-    success_criteria: str
+    success_criteria: str = Field(description=(
+        "A precise, evaluator-checkable statement defining when the task "
+        "should be considered successful. If any subtask requires side effects, "
+        "the criteria must describe readiness and approval, not real-world "
+        "execution. The criteria must be verifiable using only the State."
+    ))
     messages: Optional[list[dict[str, Any]]] = None
 
 
@@ -69,6 +80,10 @@ class EvaluatorOutput(BaseModel):
     success_criteria_met: bool = Field(description="Whether the success criteria have been met")
     user_input_needed: bool = Field(description="True if more input is needed from the user, or clarifications, or the assistant is stuck")
     side_effects_approved: Optional[bool] = None
+
+
+class FinalizerOutput(BaseModel):
+    final_answer: str = Field(description="FINAL user-facing answer")
 
 
 ToolName = Literal[

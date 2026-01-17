@@ -4,14 +4,13 @@ from langchain_core.runnables import Runnable
 from langchain_core.language_models import LanguageModelInput
 from langchain_openai.chat_models.base import _DictOrPydantic
 from utils.utils import dict_to_aimessage
-from typing import Any, Callable
 from datetime import datetime
 
 
 def evaluator_agent(
     llm_with_output: Runnable[LanguageModelInput, _DictOrPydantic],
     state: State
-) -> State:
+) -> dict:
 
     system_message = f"""
 Role:

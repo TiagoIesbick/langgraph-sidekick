@@ -1,4 +1,4 @@
-from schema import PlannerOutput, State, EvaluatorOutput, ClarifierOutput
+from schema import PlannerOutput, State, EvaluatorOutput, ClarifierOutput, FinalizerOutput
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Interrupt
 from langgraph.prebuilt import ToolNode
@@ -14,6 +14,7 @@ from agents.researcher import researcher_agent
 from agents.summarizer import summarizer_agent
 from agents.executor import executor_agent
 from agents.evaluator import evaluator_agent
+from agents.finalizer import finalizer_agent
 from db.sql_memory import setup_memory
 from utils.utils import infer_tool_name
 import uuid
@@ -28,6 +29,7 @@ class Sidekick:
         self.summarizer_llm = None
         self.executor_llm_with_tools = None
         self.evaluator_llm_with_output = None
+        self.finalizer_llm_with_output = None
         self.researcher_tools = None
         self.executor_tools = None
         self.graph = None
@@ -48,6 +50,7 @@ class Sidekick:
         self.executor_llm_with_tools = ChatOpenAI(model="gpt-4o-mini").bind_tools(self.executor_tools)
         self.summarizer_llm = ChatOpenAI(model="gpt-4o-mini")
         self.evaluator_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(EvaluatorOutput)
+        self.finalizer_llm_with_output = ChatOpenAI(model="gpt-4o-mini").with_structured_output(FinalizerOutput)
         await self.build_graph()
 
     def clarifier(self, state: State) -> State:
@@ -71,6 +74,9 @@ class Sidekick:
     def evaluator(self, state: State) -> State:
         return evaluator_agent(self.evaluator_llm_with_output, state)
 
+    def finalizer(self, state: State) -> State:
+        return finalizer_agent(self.finalizer_llm_with_output, state)
+
     def clarifier_router(self, state: State) -> str:
         if state.user_input_needed:
             return "wait"
@@ -85,7 +91,6 @@ class Sidekick:
         return next_task.assigned_to
 
     def researcher_router(self, state: State) -> str:
-        print("[researcher_router] index:", state.next_subtask_index)
 
         # 1. No plan yet
         if not state.subtasks:
@@ -129,7 +134,6 @@ class Sidekick:
         return "summarizer"
 
     def executor_router(self, state: State) -> str:
-        print("[executor_router] index:", state.next_subtask_index)
 
         # 1. No plan yet
         if not state.subtasks:
@@ -164,7 +168,10 @@ class Sidekick:
         if state.next_subtask_index < len(state.subtasks):
             return state.subtasks[state.next_subtask_index].assigned_to
 
-        return "END"
+        if state.success_criteria_met:
+            return "finalizer"
+
+        return "evaluator"
 
     async def build_graph(self):
         # Set up Graph Builder with State
@@ -178,6 +185,7 @@ class Sidekick:
         graph_builder.add_node("summarizer", self.summarizer)
         graph_builder.add_node("executor", self.executor)
         graph_builder.add_node("evaluator", self.evaluator)
+        graph_builder.add_node("finalizer", self.finalizer)
         graph_builder.add_node("researcher_tools", ToolNode(tools=self.researcher_tools))
         graph_builder.add_node("executor_tools", ToolNode(tools=self.executor_tools))
 
@@ -189,7 +197,8 @@ class Sidekick:
             {
                 "wait": "wait_for_user",
                 "planner": "planner",
-                "evaluator": "evaluator"
+                "evaluator": "evaluator",
+                "finalizer": "finalizer"
             }
         )
         graph_builder.add_conditional_edges(
@@ -248,11 +257,12 @@ class Sidekick:
                 "executor": "executor",
                 "summarizer": "summarizer",
                 "evaluator": "evaluator",
-                "END": END
+                "finalizer": "finalizer"
             }
         )
         graph_builder.add_edge("researcher_tools", "researcher")
         graph_builder.add_edge("executor_tools", "executor")
+        graph_builder.add_edge("finalizer", END)
 
         # Compile the graph
         self.graph = graph_builder.compile(checkpointer=self.memory)

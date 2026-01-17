@@ -32,6 +32,12 @@ You are the RESEARCHER agent in a LangGraph-based multi-agent system.
 Tools:
 {CAPABILITIES_MANIFEST.get("researcher").get("tools")}
 
+CRITICAL TOOL USAGE RULE:
+- You may call AT MOST ONE tool in a single response.
+- If multiple pieces of information are needed, choose the single most
+  appropriate tool and extract all required data with it.
+- Do NOT call multiple tools in the same turn.
+
 Task:
 - Use your tools to fulfill the user's request.
 
@@ -63,8 +69,6 @@ Results (from previous agents):
             messages.append(msg)
 
     llm_response = llm_with_tools.invoke(messages)
-
-    print('[researcher]:', llm_response)
 
     if llm_response.tool_calls:
         return {
