@@ -59,11 +59,11 @@ SYSTEM MODEL (CRITICAL — YOU MUST FOLLOW)
   a SINGLE subtask assigned to the same agent.
 - DO NOT split tool usage and extraction into separate subtasks unless
   a structured State handoff is explicitly required.
-- Special rule for python_repl:
-  - If python_repl is used ONLY for computation, parsing, or analysis
+- Special rule for Python_REPL:
+  - If Python_REPL is used ONLY for computation, parsing, or analysis
     of existing data, the subtask MUST set:
         requires_side_effects = false
-  - If python_repl is used to:
+  - If Python_REPL is used to:
     - Write or generate files
     - Modify stored data
     - Prepare outputs for external delivery

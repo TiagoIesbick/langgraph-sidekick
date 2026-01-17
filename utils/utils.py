@@ -16,7 +16,7 @@ CAPABILITIES_MANIFEST = {
     "executor": {
         "description": "Runs code, handles files, performs external actions.",
         "tools": [
-            "python_repl", "copy_file", "delete_file",
+            "Python_REPL", "copy_file", "delete_file",
             "file_search", "move_file", "read_file", "write_file",
             "list_directory", "send_whatsapp"
         ]
@@ -45,7 +45,7 @@ EXECUTOR_TOOL_SAFETY = {
     "list_directory": ToolSafety.READ_ONLY,
 
     # Sandboxed but potentially harmful
-    "python_repl": ToolSafety.SANDBOXED_COMPUTE,
+    "Python_REPL": ToolSafety.SANDBOXED_COMPUTE,
 
     # Irreversible
     "write_file": ToolSafety.IRREVERSIBLE,

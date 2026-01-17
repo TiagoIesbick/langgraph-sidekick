@@ -96,7 +96,7 @@ ToolName = Literal[
     "extract_hyperlinks",
     "get_elements",
     "current_web_page",
-    "python_repl",
+    "Python_REPL",
     "copy_file",
     "delete_file",
     "file_search",
