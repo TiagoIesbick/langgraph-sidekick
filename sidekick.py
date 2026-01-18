@@ -161,12 +161,11 @@ class Sidekick:
         if state.side_effects_requested and not state.side_effects_approved:
             return "clarifier"
 
-        if not state.success_criteria_met and not state.user_input_needed:
-            return "planner"
-
-        # Success → proceed to next task
         if state.next_subtask_index < len(state.subtasks):
             return state.subtasks[state.next_subtask_index].assigned_to
+
+        if not state.success_criteria_met and state.next_subtask_index >= len(state.subtasks):
+            return "planner"
 
         if state.success_criteria_met:
             return "finalizer"
