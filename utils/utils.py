@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from enum import Enum
 from schema import ToolInference
 
@@ -60,14 +60,21 @@ def dict_to_aimessage(d: dict[str, Any]) -> AIMessage:
     content = d.get("content") if isinstance(d, dict) else str(d)
     return AIMessage(content=content)
 
+def truncate(text: str, max_len=500):
+    return text if len(text) <= max_len else text[:max_len] + "…"
+
 def format_conversation(messages: list[Any]) -> str:
         conversation = ""
         for message in messages:
             if isinstance(message, HumanMessage):
                 conversation += f"User: {message.content}\n"
             elif isinstance(message, AIMessage):
-                text = message.content or "[Tools use]"
+                text = message.content or "[Requested tool execution]"
                 conversation += f"Assistant: {text}\n"
+            elif isinstance(message, ToolMessage):
+                tool_name = message.name or "unknown_tool"
+                tool_output = truncate(message.content or "[No output]")
+                conversation += f"Tool ({tool_name}) output: {tool_output}\n"
         return conversation
 
 def infer_tool_name(message: AIMessage) -> Optional[ToolInference]:

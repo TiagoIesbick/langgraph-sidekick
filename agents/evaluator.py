@@ -13,17 +13,15 @@ def evaluator_agent(
 ) -> dict:
 
     total_subtasks = len(state.subtasks or [])
-    all_tasks_done = (
-        total_subtasks > 0 and
-        state.next_subtask_index >= total_subtasks
-    )
+    tasks_remaining = state.next_subtask_index < total_subtasks
+    all_tasks_done = total_subtasks > 0 and not tasks_remaining
 
     system_message = f"""
 Role:
 You are the EVALUATOR agent in a LangGraph-based multi-agent system.
 
 Your role is to produce structured judgments about SAFETY and QUALITY.
-You do NOT execute actions, suggest plans, or decide control flow directly.
+You do NOT execute actions, suggest plans, or decide control flow.
 
 You MUST make THREE INDEPENDENT evaluations:
 
@@ -48,8 +46,7 @@ Constraints:
   - UNLESS a clear policy or safety violation exists.
 
 - Execution feasibility is NOT a safety concern.
-- You MUST NOT ask for repeated confirmation.
-- Approval ≠ execution.
+- Approval does NOT imply execution.
 
 ────────────────────────────────────
 DECISION B — QUALITY (Success Criteria)
@@ -59,17 +56,16 @@ Determine whether the task outputs meet the success criteria.
 
 Rules:
 - success_criteria_met:
-  - TRUE → All required information is correct, complete, and ready.
+  - TRUE → All required information is correct and complete.
   - FALSE → Any required element is missing, incorrect, or ambiguous.
 
 - user_input_needed:
   - TRUE → Progress is blocked by missing or unclear user information.
   - FALSE → The system can continue autonomously.
 
-Constraints:
-- Evaluate readiness and correctness ONLY.
-- Do NOT require confirmation of real-world execution.
-- Do NOT treat unexecuted side effects as failure.
+CRITICAL RULE — USER INPUT GATING:
+- Incomplete subtasks are NOT a reason for user_input_needed = TRUE
+- Only approval blocks or missing user data justify user input
 
 Blocking Rule:
 If side effects are requested AND side_effects_approved is FALSE:
@@ -89,7 +85,7 @@ Rules:
 
 IMPORTANT:
 - Replanning is ONLY POSSIBLE if ALL subtasks are completed.
-- If tasks are incomplete, replan_needed MUST be FALSE.
+- If any subtasks remain, replan_needed MUST be FALSE.
 - If user_input_needed is TRUE, replan_needed MUST be FALSE.
 
 ────────────────────────────────────
@@ -97,8 +93,8 @@ GLOBAL CONSTRAINTS
 ────────────────────────────────────
 - Do NOT suggest plans or actions.
 - Do NOT invent missing data.
-- Do NOT repeat the success criteria verbatim.
-- Safety reasoning and quality reasoning MUST be separate.
+- Do NOT treat unfinished execution as failure.
+- Safety and quality reasoning MUST be independent.
 
 Current date/time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
@@ -125,17 +121,26 @@ User explicitly approved side effects: {state.user_side_effects_confirmed}
         HumanMessage(content=human_msg)
     ])
 
-    replan_allowed = (
-        all_tasks_done and
-        not llm_response.user_input_needed
+    user_input_needed = llm_response.user_input_needed
+    replan_needed = llm_response.replan_needed
+
+    approval_blocked = (
+        state.side_effects_requested
+        and not llm_response.side_effects_approved
     )
+
+    if tasks_remaining and not approval_blocked:
+        user_input_needed = False
+
+    if not all_tasks_done or user_input_needed:
+        replan_needed = False
 
     updates = {
         "messages": [dict_to_aimessage(llm_response.feedback)],
         "feedback_on_work": llm_response.feedback,
         "success_criteria_met": llm_response.success_criteria_met,
-        "user_input_needed": llm_response.user_input_needed,
-        "replan_needed": llm_response.replan_needed if replan_allowed else False
+        "user_input_needed": user_input_needed,
+        "replan_needed": replan_needed
     }
 
     if state.side_effects_requested:
