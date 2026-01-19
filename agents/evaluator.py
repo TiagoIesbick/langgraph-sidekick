@@ -12,14 +12,20 @@ def evaluator_agent(
     state: State
 ) -> dict:
 
+    total_subtasks = len(state.subtasks or [])
+    all_tasks_done = (
+        total_subtasks > 0 and
+        state.next_subtask_index >= total_subtasks
+    )
+
     system_message = f"""
 Role:
 You are the EVALUATOR agent in a LangGraph-based multi-agent system.
 
-Your responsibility is to evaluate the current state and produce structured
-judgments. You do NOT execute actions, propose plans, or request new actions.
+Your role is to produce structured judgments about SAFETY and QUALITY.
+You do NOT execute actions, suggest plans, or decide control flow directly.
 
-You MUST make TWO SEPARATE and INDEPENDENT decisions:
+You MUST make THREE INDEPENDENT evaluations:
 
 ────────────────────────────────────
 DECISION A — SAFETY (Side Effects Approval)
@@ -27,157 +33,109 @@ DECISION A — SAFETY (Side Effects Approval)
 Goal:
 Determine whether the requested side effects are ALLOWED IN PRINCIPLE.
 
-This decision is about POLICY and SAFETY ONLY — NOT execution feasibility.
-
-You must answer:
-“If these side effects were executed exactly as described, would they violate
-any safety, policy, or ethical constraints?”
-
-────────────
-Definitions:
-- Side effects = actions that modify state outside the reasoning process
-  (e.g., writing files, sending messages, calling APIs).
-
-- side_effects_approved:
-  - TRUE → side effects are safe and allowed in principle.
-  - FALSE → side effects are disallowed due to a clear violation.
-
-────────────
-Explicitly SAFE side effects (allowed by default):
-- Writing or updating local text or markdown files.
-- Preparing or sending user-requested messages (e.g., WhatsApp, email),
-  provided they do NOT involve:
-    • impersonation
-    • fraud or deception
-    • harassment or coercion
-    • illegal activity
-    • policy-restricted content
-
-These actions are NOT risky by themselves.
-
-────────────
 Rules:
+- side_effects_approved:
+  - TRUE → Side effects are safe and policy-compliant.
+  - FALSE → Side effects violate a clear policy or safety rule.
+
+Constraints:
 - If NO side effects were requested:
   - Do NOT invent concerns.
-  - side_effects_approved MUST be omitted or FALSE.
+  - side_effects_approved MUST be FALSE or omitted.
 
-- If side effects WERE requested AND the user has explicitly approved them:
+- If side effects WERE requested AND the user explicitly approved them:
   - side_effects_approved MUST be TRUE
-  - UNLESS there is a CLEAR, EXPLICIT policy or safety violation.
+  - UNLESS a clear policy or safety violation exists.
 
-- Execution feasibility (tool availability, credentials, environment access)
-  is NOT a safety concern and MUST NOT affect this decision.
-
-- You MUST NOT:
-  - Request additional confirmation for already-approved side effects
-  - Require proof that a side effect was executed
-  - Block approval due to uncertainty or conservatism alone
-
-────────────
-IMPORTANT INVARIANT:
-User approval is FINAL for safety purposes.
-Once user approval is confirmed, safety cannot be blocked unless a true
-policy violation exists.
+- Execution feasibility is NOT a safety concern.
+- You MUST NOT ask for repeated confirmation.
+- Approval ≠ execution.
 
 ────────────────────────────────────
-DECISION B — QUALITY (Success Criteria Evaluation)
+DECISION B — QUALITY (Success Criteria)
 ────────────────────────────────────
 Goal:
-Determine whether the task output meets the defined success criteria.
+Determine whether the task outputs meet the success criteria.
 
-This decision evaluates READINESS and CORRECTNESS,
-not real-world execution.
-
-────────────
-Definitions:
+Rules:
 - success_criteria_met:
   - TRUE → All required information is correct, complete, and ready.
   - FALSE → Any required element is missing, incorrect, or ambiguous.
 
 - user_input_needed:
-  - TRUE → Progress is blocked due to missing or unclear user information.
-  - FALSE → The system can proceed autonomously.
+  - TRUE → Progress is blocked by missing or unclear user information.
+  - FALSE → The system can continue autonomously.
 
-────────────
-Rules:
-- If side effects are requested but not yet executed:
-  - Evaluate success criteria up to PREPARATION and READINESS.
-  - Do NOT expect confirmation of real-world effects.
+Constraints:
+- Evaluate readiness and correctness ONLY.
+- Do NOT require confirmation of real-world execution.
+- Do NOT treat unexecuted side effects as failure.
 
-- You MUST NOT:
-  - Expect side effects to have already happened
-  - Treat lack of execution as failure
-  - Ask the user to reconfirm previously approved actions
-
-────────────
 Blocking Rule:
 If side effects are requested AND side_effects_approved is FALSE:
 - success_criteria_met MUST be FALSE
 - user_input_needed MUST be TRUE
-- Feedback MUST explain the safety violation clearly
-
-────────────
-Non-Blocking Rule:
-If side effects are requested AND side_effects_approved is TRUE:
-- user_input_needed MUST be FALSE unless task data itself is missing
 
 ────────────────────────────────────
-FEEDBACK REQUIREMENTS
+DECISION C — REPLANNING NEED
 ────────────────────────────────────
-Your feedback MUST:
-- Be concise and factual
-- Clearly separate safety reasoning from quality reasoning
-- Explicitly state:
-  • why side effects are approved or denied
-  • what is missing (if anything) for success
+Goal:
+Determine whether the system SHOULD attempt to fix its own work.
 
-You MUST NOT:
-- Suggest plans, next steps, or actions
-- Repeat the success criteria verbatim
-- Invent missing data
-- Use vague phrases like “safety concerns” without explanation
+Rules:
+- replan_needed:
+  - TRUE → The system could reasonably fix the issue autonomously.
+  - FALSE → Replanning would not help or user input is required.
+
+IMPORTANT:
+- Replanning is ONLY POSSIBLE if ALL subtasks are completed.
+- If tasks are incomplete, replan_needed MUST be FALSE.
+- If user_input_needed is TRUE, replan_needed MUST be FALSE.
 
 ────────────────────────────────────
 GLOBAL CONSTRAINTS
 ────────────────────────────────────
-- You are an evaluator, not a planner or executor
-- Approval ≠ execution
-- Safety ≠ feasibility
-- Readiness ≠ real-world confirmation
+- Do NOT suggest plans or actions.
+- Do NOT invent missing data.
+- Do NOT repeat the success criteria verbatim.
+- Safety reasoning and quality reasoning MUST be separate.
 
 Current date/time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
 
     human_msg = f"""
-[INPUT — SUCCESS CRITERIA]
+[EXECUTION STATUS]
+Total subtasks: {total_subtasks}
+Next subtask index: {state.next_subtask_index}
+All subtasks completed: {all_tasks_done}
+
+[SUCCESS CRITERIA]
 {state.success_criteria}
 
-[INPUT — TASK RESULTS]
+[TASK RESULTS]
 {chr(10).join(f"- {r}" for r in state.subtask_results)}
 
-[INPUT — SAFETY CONTEXT]
+[SAFETY CONTEXT]
 Side effects requested: {state.side_effects_requested}
 User explicitly approved side effects: {state.user_side_effects_confirmed}
 """
-
-    if state.feedback_on_work:
-      human_msg += (
-          "\n[PRIOR QUALITY FEEDBACK]\n"
-          f"{state.feedback_on_work}\n"
-          "If the assistant is repeating the same mistakes, "
-          "consider setting user_input_needed to TRUE."
-      )
 
     llm_response: EvaluatorOutput = llm_with_output.invoke([
         SystemMessage(content=system_message),
         HumanMessage(content=human_msg)
     ])
 
+    replan_allowed = (
+        all_tasks_done and
+        not llm_response.user_input_needed
+    )
+
     updates = {
         "messages": [dict_to_aimessage(llm_response.feedback)],
         "feedback_on_work": llm_response.feedback,
         "success_criteria_met": llm_response.success_criteria_met,
-        "user_input_needed": llm_response.user_input_needed
+        "user_input_needed": llm_response.user_input_needed,
+        "replan_needed": llm_response.replan_needed if replan_allowed else False
     }
 
     if state.side_effects_requested:

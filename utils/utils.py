@@ -8,15 +8,15 @@ CAPABILITIES_MANIFEST = {
     "researcher": {
         "description": "Finds information online, navigates the web, extracts structured content.",
         "tools": [
-            "search", "wikipedia", "click", "navigate",
-            "navigate_back", "extract_text", "extract_hyperlinks",
-            "get_elements", "current_web_page"
+            "search", "wikipedia", "click_element", "navigate_browser",
+            "previous_webpage", "extract_text", "extract_hyperlinks",
+            "get_elements", "current_webpage"
         ]
     },
     "executor": {
         "description": "Runs code, handles files, performs external actions.",
         "tools": [
-            "Python_REPL", "copy_file", "delete_file",
+            "Python_REPL", "copy_file", "file_delete",
             "file_search", "move_file", "read_file", "write_file",
             "list_directory", "send_whatsapp"
         ]
@@ -49,7 +49,7 @@ EXECUTOR_TOOL_SAFETY = {
 
     # Irreversible
     "write_file": ToolSafety.IRREVERSIBLE,
-    "delete_file": ToolSafety.IRREVERSIBLE,
+    "file_delete": ToolSafety.IRREVERSIBLE,
     "move_file": ToolSafety.IRREVERSIBLE,
     "copy_file": ToolSafety.IRREVERSIBLE,
     "send_whatsapp": ToolSafety.IRREVERSIBLE,

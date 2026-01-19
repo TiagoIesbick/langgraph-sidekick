@@ -40,6 +40,7 @@ class State(BaseModel):
     side_effects_requested: bool = False
     side_effects_approved: bool = False
     user_side_effects_confirmed: bool = False
+    replan_needed: bool = False
     final_answer: Optional[str] = None
 
 
@@ -78,8 +79,13 @@ class PlannerOutput(BaseModel):
 class EvaluatorOutput(BaseModel):
     feedback: str = Field(description="Feedback on the assistant's response")
     success_criteria_met: bool = Field(description="Whether the success criteria have been met")
-    user_input_needed: bool = Field(description="True if more input is needed from the user, or clarifications, or the assistant is stuck")
+    user_input_needed: bool = Field(
+        description="True if more input is needed from the user, or clarifications, or the assistant requires approval"
+    )
     side_effects_approved: Optional[bool] = None
+    replan_needed: bool = Field(
+        description="True if the failure is correctable by the system through replanning without new user input"
+    )
 
 
 class FinalizerOutput(BaseModel):
@@ -89,16 +95,16 @@ class FinalizerOutput(BaseModel):
 ToolName = Literal[
     "search",
     "wikipedia",
-    "click",
-    "navigate",
-    "navigate_back",
+    "click_element",
+    "navigate_browser",
+    "previous_webpage",
     "extract_text",
     "extract_hyperlinks",
     "get_elements",
-    "current_web_page",
+    "current_webpage",
     "Python_REPL",
     "copy_file",
-    "delete_file",
+    "file_delete",
     "file_search",
     "move_file",
     "read_file",

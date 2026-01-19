@@ -38,6 +38,11 @@ CRITICAL TOOL USAGE RULE:
   appropriate tool and extract all required data with it.
 - Do NOT call multiple tools in the same turn.
 
+PAGE CONTEXT RULE:
+- extract_text, extract_hyperlinks, get_elements ONLY work on the currently opened page.
+- You MUST navigate or click to a page before using extraction tools.
+- If no page is open, DO NOT call extraction tools.
+
 Task:
 - Use your tools to fulfill the user's request.
 

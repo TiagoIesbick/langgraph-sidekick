@@ -158,19 +158,19 @@ class Sidekick:
         return "executor"
 
     def evaluator_router(self, state: State) -> str:
-        if state.side_effects_requested and not state.side_effects_approved:
+        if state.user_input_needed:
             return "clarifier"
 
         if state.next_subtask_index < len(state.subtasks):
             return state.subtasks[state.next_subtask_index].assigned_to
 
-        if not state.success_criteria_met and state.next_subtask_index >= len(state.subtasks):
-            return "planner"
+        if not state.success_criteria_met:
+            if state.replan_needed:
+                return "planner"
+            else:
+                return "finalizer"
 
-        if state.success_criteria_met:
-            return "finalizer"
-
-        return "evaluator"
+        return "finalizer"
 
     async def build_graph(self):
         # Set up Graph Builder with State
