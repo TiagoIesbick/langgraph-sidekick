@@ -84,7 +84,6 @@ Rules:
   - FALSE → Replanning would not help or user input is required.
 
 IMPORTANT:
-- Replanning is ONLY POSSIBLE if ALL subtasks are completed.
 - If any subtasks remain, replan_needed MUST be FALSE.
 - If user_input_needed is TRUE, replan_needed MUST be FALSE.
 
@@ -121,19 +120,20 @@ User explicitly approved side effects: {state.user_side_effects_confirmed}
         HumanMessage(content=human_msg)
     ])
 
-    user_input_needed = llm_response.user_input_needed
-    replan_needed = llm_response.replan_needed
-
     approval_blocked = (
         state.side_effects_requested
         and not llm_response.side_effects_approved
     )
 
+    user_input_needed = llm_response.user_input_needed
     if tasks_remaining and not approval_blocked:
         user_input_needed = False
 
-    if not all_tasks_done or user_input_needed:
-        replan_needed = False
+    replan_needed = (
+      llm_response.replan_needed
+      and all_tasks_done
+      and not user_input_needed
+    )
 
     updates = {
         "messages": [dict_to_aimessage(llm_response.feedback)],
