@@ -23,9 +23,8 @@ You are invoked in one of two situations:
 
 2) A previous Evaluator agent has DENIED an otherwise sensible task produced
    by the Executor agent. In this case:
-   - The denial reason is stored in the state field: feedback_on_work
-   - side_effects_approved is false
-   - The system requires user clarification, correction, or confirmation
+   - The denial reason is stated in the evaluator's feedback.
+   - The system requires user clarification, correction, or confirmation.
 
 YOUR GOAL:
 Determine whether the system needs additional input from the USER
@@ -42,41 +41,35 @@ WHAT YOU MUST DO:
 
 IMPORTANT CONSTRAINTS:
 - You must consider the FULL conversation history.
-- You must consider evaluator feedback if present.
+- If side effects are currently requested:
+    - You must give GREATER WEIGHT to the evaluator's feedback.
 - Do NOT repeat previous assistant questions.
 - Do NOT ask for information the user already provided.
 - Do NOT acknowledge, summarize, or restate the request unless a question
   is strictly required.
 
 SIDE EFFECT CONSENT EXTRACTION:
-If evaluator feedback is present AND the user's last message explicitly grants or refuses
-permission for the previously blocked irreversible action:
+- If side effects are currently requested:
+    - You MUST check which side effect the system requested and whether the user’s LATEST message provides explicit consent for it:
+        - Explicit approval (e.g. "yes, go ahead", "I approve"):
+            → set user_side_effects_confirmed = true
+        - Explicit refusal or revocation:
+            → set user_side_effects_confirmed = false
+        - If the user has not addressed side effects:
+            → omit user_side_effects_confirmed entirely
+        - If consent is extracted:
+            → Set user_input_needed = false.
+            → Do NOT ask a question.
+            → Include the extracted user_side_effects_confirmed.
 
-- Explicit approval (e.g. "yes, go ahead", "I approve"):
-    → set user_side_effects_confirmed = true
-- Explicit refusal or revocation:
-    → set user_side_effects_confirmed = false
-- If the user has not addressed side effects:
-    → omit user_side_effects_confirmed entirely
-- If consent is extracted:
-    → Set user_input_needed = false.
-    → Do NOT ask a question.
-    → Include the extracted user_side_effects_confirmed.
-
-CRITICAL OUTPUT FORMAT — MUST FOLLOW EXACTLY
-
-The field `messages` represents updates to LangGraph state.messages.
-
-If you include `messages`, it MUST be a LIST of message OBJECTS.
-
-Each message object MUST have EXACTLY this structure:
+OUTPUT RULES:
+- The field `messages` represents updates to LangGraph state.messages.
+- If you include `messages`, it MUST be a LIST of message OBJECTS.
+- Each message object MUST have EXACTLY this structure:
 {{
   "role": "assistant",
-  "content": "<string>"
+  "content": "<question>"
 }}
-
-STRICT RULES:
-
 - If user_input_needed = true:
     - You MUST include `messages`
     - `messages` MUST be a list with EXACTLY ONE object
@@ -84,15 +77,13 @@ STRICT RULES:
         - "role": "assistant"
         - "content": the question text
     - You MUST NOT output a string, number, or object directly for `messages`
-
 - If user_input_needed = false:
     - You MUST NOT include `messages` at all
     - Do NOT output an empty list
     - Do NOT output null
 
-Any deviation from this structure is INVALID.
-
-The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
+CURRENT CONTEXT:
+- Current date/time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
 
     last_user_message = next(
@@ -105,21 +96,20 @@ The current date and time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.
     )
 
     human_message = f"""
-Conversation history:
+[CONVERSATION HISTORY]
 {format_conversation(state.messages)}
 
-Latest USER message:
+[LATEST USER MESSAGE]
 "{last_user_input}"
 
-Evaluator feedback (if any):
-{state.feedback_on_work or "(none)"}
+[SYSTEM STATE]
+- Side effects currently requested: {state.side_effects_requested}
+- Evaluator feedback: {state.feedback_on_work or "(none)"}
 
-Task:
-- Extract consent if evaluator feedback present.
-- Decide if user input needed (unclear request or unaddressed feedback).
-- If yes: Ask ONE question; user_input_needed=true.
-- If no (clear or consent extracted): user_input_needed=false; no messages.
-- Set user_side_effects_confirmed if extracted.
+[TASK]
+1. Analyze user intent.
+2. Extract side effect consent if applicable.
+3. Decide if user input is needed.
 """
 
     llm_response: ClarifierOutput  = llm_with_output.invoke([

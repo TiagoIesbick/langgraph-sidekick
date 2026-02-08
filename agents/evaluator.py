@@ -3,7 +3,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import LanguageModelInput
 from langchain_openai.chat_models.base import _DictOrPydantic
-from utils.utils import dict_to_aimessage
+from utils.utils import dict_to_aimessage, format_conversation
 from datetime import datetime
 
 
@@ -31,22 +31,22 @@ DECISION A — SAFETY (Side Effects Approval)
 Goal:
 Determine whether the requested side effects are ALLOWED IN PRINCIPLE.
 
+Context:
+- The system pauses execution if ANY tool in a parallel batch requires approval.
+- Look at the [PENDING REQUEST] section to see which tools are being requested.
+
 Rules:
 - side_effects_approved:
-  - TRUE → Side effects are safe and policy-compliant.
-  - FALSE → Side effects violate a clear policy or safety rule.
+  - TRUE → Side effects are safe and policy-compliant (or explicitly approved by user).
+  - FALSE → Side effects violate a clear policy or safety rule, OR user approval is missing.
 
 Constraints:
 - If NO side effects were requested:
-  - Do NOT invent concerns.
-  - side_effects_approved MUST be FALSE or omitted.
-
-- If side effects WERE requested AND the user explicitly approved them:
-  - side_effects_approved MUST be TRUE
-  - UNLESS a clear policy or safety violation exists.
-
-- Execution feasibility is NOT a safety concern.
-- Approval does NOT imply execution.
+  - side_effects_approved MUST be FALSE (default).
+- If side effects WERE requested:
+  - You MUST check if the user has provided explicit consent in the conversation history.
+  - If `user_side_effects_confirmed` is TRUE in the state, you generally approve.
+  - If `user_side_effects_confirmed` is FALSE/None, you MUST block (approve=False) and request user input.
 
 ────────────────────────────────────
 DECISION B — QUALITY (Success Criteria)
@@ -60,17 +60,13 @@ Rules:
   - FALSE → Any required element is missing, incorrect, or ambiguous.
 
 - user_input_needed:
-  - TRUE → Progress is blocked by missing or unclear user information.
+  - TRUE → Progress is blocked by missing or unclear user information (including missing approval).
   - FALSE → The system can continue autonomously.
-
-CRITICAL RULE — USER INPUT GATING:
-- Incomplete subtasks are NOT a reason for user_input_needed = TRUE
-- Only approval blocks or missing user data justify user input
 
 Blocking Rule:
 If side effects are requested AND side_effects_approved is FALSE:
 - success_criteria_met MUST be FALSE
-- user_input_needed MUST be TRUE
+- user_input_needed MUST be TRUE (to trigger the interaction loop)
 
 ────────────────────────────────────
 DECISION C — REPLANNING NEED
@@ -87,16 +83,10 @@ IMPORTANT:
 - If any subtasks remain, replan_needed MUST be FALSE.
 - If user_input_needed is TRUE, replan_needed MUST be FALSE.
 
-────────────────────────────────────
-GLOBAL CONSTRAINTS
-────────────────────────────────────
-- Do NOT suggest plans or actions.
-- Do NOT invent missing data.
-- Do NOT treat unfinished execution as failure.
-- Safety and quality reasoning MUST be independent.
-
 Current date/time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
+
+    recent_context = format_conversation(state.messages[-3:]) or "(none)"
 
     human_msg = f"""
 [EXECUTION STATUS]
@@ -109,6 +99,9 @@ All subtasks completed: {all_tasks_done}
 
 [TASK RESULTS]
 {chr(10).join(f"- {r}" for r in state.subtask_results)}
+
+[PENDING REQUEST / RECENT CONTEXT]
+{recent_context}
 
 [SAFETY CONTEXT]
 Side effects requested: {state.side_effects_requested}

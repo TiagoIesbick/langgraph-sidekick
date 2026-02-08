@@ -1,4 +1,4 @@
-from typing import Any, Optional, get_args
+from typing import Any, get_args
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from enum import Enum
 from schema import ResearcherToolInference, ExecutorToolInference, ResearcherToolName, ExecutorToolName, AnyToolInference
