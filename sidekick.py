@@ -1,4 +1,4 @@
-from schema import PlannerOutput, State, EvaluatorOutput, ClarifierOutput, FinalizerOutput
+from schema import ExecutorToolInference, PlannerOutput, State, EvaluatorOutput, ClarifierOutput, FinalizerOutput, ResearcherToolInference
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Interrupt
 from langgraph.prebuilt import ToolNode
@@ -16,7 +16,7 @@ from agents.executor import executor_agent
 from agents.evaluator import evaluator_agent
 from agents.finalizer import finalizer_agent
 from db.sql_memory import setup_memory
-from utils.utils import infer_tool_name
+from utils.utils import infer_tool_calls
 import uuid
 import asyncio
 
@@ -109,9 +109,12 @@ class Sidekick:
         # 4. Tool call in progress
         if state.messages:
             last = state.messages[-1]
-            tool = infer_tool_name(last)
-            if tool:
-                return "researcher_tools"
+            tools = infer_tool_calls(last)
+            if tools:
+                if all(isinstance(t, ResearcherToolInference) for t in tools):
+                    return "researcher_tools"
+                else:
+                    return "researcher"
 
         # 5. Otherwise keep researching
         return "researcher"
@@ -152,8 +155,14 @@ class Sidekick:
         if state.side_effects_requested and not state.side_effects_approved:
             return "evaluator"
 
-        if state.messages and infer_tool_name(state.messages[-1]):
-            return "executor_tools"
+        if state.messages:
+            last = state.messages[-1]
+            tools = infer_tool_calls(last)
+            if tools:
+                if all(isinstance(t, ExecutorToolInference) for t in tools):
+                    return "executor_tools"
+                else:
+                    return "executor"
 
         return "executor"
 

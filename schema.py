@@ -1,5 +1,5 @@
 from typing import Annotated
-from typing_extensions import Any, Optional, Literal
+from typing_extensions import Any, Optional, Literal, Union
 from pydantic import BaseModel, Field
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
@@ -9,10 +9,11 @@ class Subtask(BaseModel):
     task: str = Field(
         description=(
             "A single executable responsibility assigned to an agent. "
-            "A task may involve multiple internal steps (including tool calls), "
-            "but must result in a clear, explicit update to the shared state "
-            "that signals task completion.\n\n"
-            "Tasks MUST be defined in terms of outcomes, not intermediate actions. "
+            "A task may involve multiple internal steps, **including parallel tool calls** "
+            "(e.g., searching for multiple distinct topics at once). "
+            "Tasks MUST be defined in terms of **outcomes**, not individual tool executions. "
+            "Group related or independent queries into a SINGLE subtask to maximize efficiency."
+            "\n\n"
             "If tool usage and data extraction are required, they must be included "
             "in the same task unless the output is explicitly written to a named "
             "state field for subsequent tasks to consume.\n\n"
@@ -92,7 +93,7 @@ class FinalizerOutput(BaseModel):
     final_answer: str = Field(description="FINAL user-facing answer")
 
 
-ToolName = Literal[
+ResearcherToolName = Literal[
     "search",
     "wikipedia",
     "click_element",
@@ -101,7 +102,11 @@ ToolName = Literal[
     "extract_text",
     "extract_hyperlinks",
     "get_elements",
-    "current_webpage",
+    "current_webpage"
+]
+
+
+ExecutorToolName = Literal[
     "Python_REPL",
     "copy_file",
     "file_delete",
@@ -110,9 +115,20 @@ ToolName = Literal[
     "read_file",
     "write_file",
     "list_directory",
-    "send_whatsapp",
+    "send_whatsapp"
 ]
 
-class ToolInference(BaseModel):
-    tool_name: ToolName
+
+class ResearcherToolInference(BaseModel):
+    tool_name: ResearcherToolName
     tool_call_id: str
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExecutorToolInference(BaseModel):
+    tool_name: ExecutorToolName
+    tool_call_id: str
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+AnyToolInference = Union[ResearcherToolInference, ExecutorToolInference]

@@ -1,7 +1,7 @@
-from typing import Any, Optional
+from typing import Any, Optional, get_args
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from enum import Enum
-from schema import ToolInference
+from schema import ResearcherToolInference, ExecutorToolInference, ResearcherToolName, ExecutorToolName, AnyToolInference
 
 
 CAPABILITIES_MANIFEST = {
@@ -55,6 +55,13 @@ EXECUTOR_TOOL_SAFETY = {
     "send_whatsapp": ToolSafety.IRREVERSIBLE,
 }
 
+
+RESEARCHER_TOOLS = set(get_args(ResearcherToolName))
+
+
+EXECUTOR_TOOLS = set(get_args(ExecutorToolName))
+
+
 def dict_to_aimessage(d: dict[str, Any]) -> AIMessage:
     # Accepts either {"content": "...", "type":"assistant"} or {"content": "..."}
     content = d.get("content") if isinstance(d, dict) else str(d)
@@ -77,32 +84,46 @@ def format_conversation(messages: list[Any]) -> str:
                 conversation += f"Tool ({tool_name}) output: {tool_output}\n"
         return conversation
 
-def infer_tool_name(message: AIMessage) -> Optional[ToolInference]:
+def infer_tool_calls(message: AIMessage) -> list[AnyToolInference]:
     """
-    Extracts the tool name from a structured AIMessage.
-    Returns None if no tool call exists.
-    Raises if the message is malformed.
-    """
+    Extracts ALL tool calls from a structured AIMessage.
+    Returns a list of strictly typed tool inference objects.
 
+    If a tool name is not found in either schema, it is skipped (or you could raise).
+    """
     if not isinstance(message, AIMessage):
-        return None
+        return []
 
     tool_calls = getattr(message, "tool_calls", None)
-
     if not tool_calls:
-        return None
+        return []
 
-    if len(tool_calls) != 1:
-        raise RuntimeError(
-            f"Expected exactly one tool call, got {len(tool_calls)}"
-        )
+    inferred_tools: list[AnyToolInference] = []
 
-    tool_call = tool_calls[0]
+    for call in tool_calls:
+        name = call.get("name")
+        call_id = call.get("id")
+        args = call.get("args", {})
 
-    if "name" not in tool_call:
-        raise RuntimeError("Malformed tool call: missing 'name'")
+        if name in RESEARCHER_TOOLS:
+            inferred_tools.append(
+                ResearcherToolInference(
+                    tool_name=name,
+                    tool_call_id=call_id,
+                    args=args
+                )
+            )
+        elif name in EXECUTOR_TOOLS:
+            inferred_tools.append(
+                ExecutorToolInference(
+                    tool_name=name,
+                    tool_call_id=call_id,
+                    args=args
+                )
+            )
+        else:
+            # Handle unknown tools (hallucinations or misconfigurations)
+            print(f"Warning: Agent attempted to call unknown tool '{name}'. Skipping.")
+            continue
 
-    return ToolInference(
-        tool_name=tool_call["name"],
-        tool_call_id=tool_call["id"],
-    )
+    return inferred_tools
