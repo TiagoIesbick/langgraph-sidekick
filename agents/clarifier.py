@@ -119,8 +119,6 @@ CURRENT CONTEXT:
 
     diff: ClarifierStateDiff = llm_response.state_diff
 
-    print('[diff]:', diff)
-
     updates: dict = {}
 
     if diff.messages:

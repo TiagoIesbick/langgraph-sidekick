@@ -145,15 +145,12 @@ Conversation so far:
 Generate the plan, subtasks, and success criteria.
 """
 
-
     llm_response: PlannerOutput = llm_with_output.invoke([
         SystemMessage(content=system_msg),
         HumanMessage(content=human_msg)
     ])
 
-
     diff: PlannerStateDiff = llm_response.state_diff
-
 
     updates: dict[str, Any] = {
         "plan": diff.plan,

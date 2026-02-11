@@ -30,7 +30,6 @@ Rules:
         HumanMessage(content=human_msg)
     ])
 
-    print(f"[summarizer_response]: {llm_response}")
     return {
         "subtask_results": state.subtask_results + [llm_response.content],
         "messages": [dict_to_aimessage(llm_response)],

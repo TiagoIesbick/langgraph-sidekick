@@ -10,7 +10,6 @@ async def setup():
     return sidekick
 
 async def process_message(sidekick, message, history):
-    print('[process msg]:', message)
     history, _ = await sidekick.run_superstep(message, history)
     return history, sidekick
 

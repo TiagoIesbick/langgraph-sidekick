@@ -293,7 +293,6 @@ class Sidekick:
         )
 
         if last_ai:
-            print('[last_ai]:', last_ai)
             history = history + [
                 {"role": "user", "content": message.content},
                 {"role": "assistant", "content": last_ai.content},
