@@ -14,9 +14,30 @@ def planner_agent(
     state: State
 ) -> dict:
 
+    replanning_context = ""
+    if state.replan_needed:
+      replanning_context = f"""
+****************************************************
+CRITICAL: REPLANNING MODE ACTIVATED
+****************************************************
+The previous execution FAILED. You are now correcting the plan.
+
+PREVIOUS FEEDBACK / ERROR:
+"{state.feedback_on_work}"
+
+REQUIREMENTS FOR THE NEW PLAN:
+1. Do NOT repeat the exact same steps that just failed.
+2. If a tool failed (e.g., file not found), add a diagnostic step first
+   (e.g., "List directory" to find the correct name).
+3. If a search failed, use DIFFERENT query terms.
+4. Your new subtasks MUST explicitly address the failure reason.
+"""
+
     system_msg = f"""
 Role:
 You are the PLANNER agent in a LangGraph-based multi-agent system.
+
+{replanning_context}
 
 Your responsibility is to convert the conversation into an EXECUTABLE PLAN
 that downstream agents can carry out WITHOUT ambiguity, hidden assumptions,
@@ -139,7 +160,10 @@ Generate the plan, subtasks, and success criteria.
         "subtasks": diff.subtasks,
         "success_criteria": diff.success_criteria,
         "next_subtask_index": 0,
-        "subtask_results": []
+        "subtask_results": [],
+        "replan_needed": False,
+        "success_criteria_met": False,
+        "feedback_on_work": None
     }
 
     if diff.messages:
